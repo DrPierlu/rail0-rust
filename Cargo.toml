@@ -1,0 +1,44 @@
+[package]
+name = "rail0"
+version = "0.1.0"
+edition = "2021"
+description = "Rust SDK for the RAIL0 stablecoin payment API"
+license = "MIT"
+repository = "https://github.com/rail0/rust-sdk"
+keywords = ["rail0", "payments", "stablecoin", "usdc", "ethereum"]
+categories = ["api-bindings", "web-programming"]
+rust-version = "1.75"
+
+[lib]
+name = "rail0"
+path = "src/lib.rs"
+
+[[bin]]
+name = "generate"
+path = "gen/generate.rs"
+
+[[example]]
+name = "01_authorize_and_capture"
+path = "examples/01_authorize_and_capture.rs"
+
+[[example]]
+name = "02_charge"
+path = "examples/02_charge.rs"
+
+[[example]]
+name = "03_refund"
+path = "examples/03_refund.rs"
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["time", "rt-multi-thread", "macros"] }
+thiserror = "1"
+sha3 = "0.10"
+k256 = { version = "0.13", features = ["ecdsa"] }
+hex = "0.4"
+
+[dev-dependencies]
+mockito = "1"
+tokio = { version = "1", features = ["full", "macros"] }
