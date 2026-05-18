@@ -177,16 +177,16 @@
       "get": {
         "tags": ["utils"],
         "summary": "Authorize nonce",
-        "description": "Returns the EIP-3009 nonce the payer must include in the transferWithAuthorization signature for an authorize call.",
+        "description": "Computes the EIP-3009 nonce the payer must use when signing a transferWithAuthorization for an authorize call. The nonce is derived from paymentId and the configHash (EIP-712 digest of the Payment configuration).",
         "operationId": "authorizeNonce",
         "parameters": [
           { "$ref": "#/components/parameters/PaymentId" },
           {
-            "name": "payer",
+            "name": "configHash",
             "in": "query",
             "required": true,
-            "schema": { "$ref": "#/components/schemas/Address" },
-            "description": "Payer address"
+            "schema": { "$ref": "#/components/schemas/Bytes32" },
+            "description": "EIP-712 digest of the Payment configuration (from POST /payments/hash)"
           }
         ],
         "responses": {
@@ -212,16 +212,16 @@
       "get": {
         "tags": ["utils"],
         "summary": "Charge nonce",
-        "description": "Returns the EIP-3009 nonce the payer must include in the transferWithAuthorization signature for a charge call.",
+        "description": "Computes the EIP-3009 nonce the payer must use when signing a transferWithAuthorization for a charge call. The nonce is derived from paymentId and the configHash (EIP-712 digest of the Payment configuration).",
         "operationId": "chargeNonce",
         "parameters": [
           { "$ref": "#/components/parameters/PaymentId" },
           {
-            "name": "payer",
+            "name": "configHash",
             "in": "query",
             "required": true,
-            "schema": { "$ref": "#/components/schemas/Address" },
-            "description": "Payer address"
+            "schema": { "$ref": "#/components/schemas/Bytes32" },
+            "description": "EIP-712 digest of the Payment configuration (from POST /payments/hash)"
           }
         ],
         "responses": {

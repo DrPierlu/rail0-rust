@@ -165,8 +165,6 @@ fn sign_authorize_valid_signature() {
         nonce: NONCE.into(),
         contract_address: CONTRACT.into(),
         token_domain: domain(),
-        valid_after: None,
-        valid_before: None,
     })
     .unwrap();
     assert!(sig.v == 27 || sig.v == 28);
@@ -184,8 +182,6 @@ fn sign_authorize_is_deterministic() {
         nonce: NONCE.into(),
         contract_address: CONTRACT.into(),
         token_domain: domain(),
-        valid_after: None,
-        valid_before: None,
     };
     assert_eq!(sign_authorize(&params()).unwrap().r, sign_authorize(&params()).unwrap().r);
 }
@@ -204,8 +200,6 @@ fn sign_charge_valid_signature() {
         nonce: NONCE.into(),
         contract_address: CONTRACT.into(),
         token_domain: domain(),
-        valid_after: None,
-        valid_before: None,
     })
     .unwrap();
     assert!(sig.v == 27 || sig.v == 28);
@@ -223,8 +217,6 @@ fn sign_charge_differs_from_authorize_with_same_nonce() {
         nonce: NONCE.into(),
         contract_address: CONTRACT.into(),
         token_domain: domain(),
-        valid_after: None,
-        valid_before: None,
     };
     let auth = sign_authorize(&base).unwrap();
     let mut charge_params = base.clone();

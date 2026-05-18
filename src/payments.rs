@@ -91,24 +91,26 @@ impl PaymentsClient {
     }
 
     /// Returns the EIP-3009 nonce the payer must include in the `authorize` signature.
+    /// `config_hash` is the EIP-712 digest of the Payment configuration (from `payments.hash`).
     pub async fn authorize_nonce(
         &self,
         payment_id: &str,
-        payer: &str,
+        config_hash: &str,
     ) -> Result<NonceResponse, Rail0Error> {
         self.http
-            .get(&format!("/payments/{payment_id}/authorize-nonce?payer={payer}"))
+            .get(&format!("/payments/{payment_id}/authorize-nonce?configHash={config_hash}"))
             .await
     }
 
     /// Returns the EIP-3009 nonce the payer must include in the `charge` signature.
+    /// `config_hash` is the EIP-712 digest of the Payment configuration (from `payments.hash`).
     pub async fn charge_nonce(
         &self,
         payment_id: &str,
-        payer: &str,
+        config_hash: &str,
     ) -> Result<NonceResponse, Rail0Error> {
         self.http
-            .get(&format!("/payments/{payment_id}/charge-nonce?payer={payer}"))
+            .get(&format!("/payments/{payment_id}/charge-nonce?configHash={config_hash}"))
             .await
     }
 

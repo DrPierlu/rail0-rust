@@ -72,6 +72,9 @@ pub struct SignTransferParams {
 ///
 /// Obtain `nonce` from [`payments.authorize_nonce`](crate::PaymentsClient::authorize_nonce)
 /// or [`payments.charge_nonce`](crate::PaymentsClient::charge_nonce).
+///
+/// The contract hardcodes `validAfter=0` and `validBefore=payment.authorization_expiry`;
+/// these are not configurable by the caller.
 #[derive(Debug, Clone)]
 pub struct SignPaymentParams {
     /// 32-byte secp256k1 private key of the payer.
@@ -84,10 +87,6 @@ pub struct SignPaymentParams {
     pub nonce: Bytes32,
     pub contract_address: Address,
     pub token_domain: TokenDomain,
-    /// Earliest valid timestamp. `None` means 0 (immediate).
-    pub valid_after: Option<u128>,
-    /// Latest valid timestamp. `None` defaults to `payment.authorization_expiry`.
-    pub valid_before: Option<u128>,
 }
 
 // ================================================================
@@ -250,32 +249,28 @@ pub fn sign_transfer_with_authorization(
 /// ```no_run
 /// # use rail0::*;
 /// # async fn example(client: &Rail0Client) {
-/// let nonce = client.payments.authorize_nonce("0xpaymentId", "0xpayer").await.unwrap();
+/// # let payment: Payment = todo!();
+/// let hash_resp = client.payments.hash(&payment).await.unwrap();
+/// let nonce = client.payments.authorize_nonce("0xpaymentId", &hash_resp.hash).await.unwrap();
 /// let key = hex_to_private_key("0xYourPrivateKey").unwrap();
 /// let sig = sign_authorize(&SignPaymentParams {
 ///     private_key: key,
-///     payment: todo!(),
+///     payment,
 ///     amount: 50_000_000,
 ///     nonce: nonce.nonce,
 ///     contract_address: "0xRAIL0Contract".into(),
 ///     token_domain: TokenDomain { name: "USD Coin".into(), version: "2".into(), chain_id: 8453, verifying_contract: "0xToken".into() },
-///     valid_after: None,
-///     valid_before: None,
 /// }).unwrap();
 /// # }
 /// ```
 pub fn sign_authorize(params: &SignPaymentParams) -> Result<Eip3009Signature, Rail0Error> {
-    let valid_after = params.valid_after.unwrap_or(0);
-    let valid_before = params
-        .valid_before
-        .unwrap_or(params.payment.authorization_expiry as u128);
     let digest = build_digest(
         &params.token_domain,
         &params.payment.payer,
         &params.contract_address,
         params.amount,
-        valid_after,
-        valid_before,
+        0,
+        params.payment.authorization_expiry as u128,
         &params.nonce,
     );
     do_sign(&params.private_key, &digest)

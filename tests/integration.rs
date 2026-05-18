@@ -7,6 +7,8 @@ use rail0::{ClientOptions, Rail0Client, TransactionStatus};
 const PAYMENT_ID: &str =
     "0x1111111111111111111111111111111111111111111111111111111111111111";
 const PAYER: &str = "0xBuyerAddress000000000000000000000000000000";
+const CONFIG_HASH: &str =
+    "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab";
 
 fn tx_body() -> String {
     format!(
@@ -194,7 +196,7 @@ async fn authorize_nonce_returns_bytes32() {
     server
         .mock(
             "GET",
-            format!("/payments/{PAYMENT_ID}/authorize-nonce?payer={PAYER}").as_str(),
+            format!("/payments/{PAYMENT_ID}/authorize-nonce?configHash={CONFIG_HASH}").as_str(),
         )
         .with_status(200)
         .with_header("content-type", "application/json")
@@ -204,7 +206,7 @@ async fn authorize_nonce_returns_bytes32() {
 
     let res = client(&server.url())
         .payments
-        .authorize_nonce(PAYMENT_ID, PAYER)
+        .authorize_nonce(PAYMENT_ID, CONFIG_HASH)
         .await
         .unwrap();
     assert!(res.nonce.starts_with("0x"));
@@ -217,7 +219,7 @@ async fn charge_nonce_returns_bytes32() {
     server
         .mock(
             "GET",
-            format!("/payments/{PAYMENT_ID}/charge-nonce?payer={PAYER}").as_str(),
+            format!("/payments/{PAYMENT_ID}/charge-nonce?configHash={CONFIG_HASH}").as_str(),
         )
         .with_status(200)
         .with_header("content-type", "application/json")
@@ -227,7 +229,7 @@ async fn charge_nonce_returns_bytes32() {
 
     let res = client(&server.url())
         .payments
-        .charge_nonce(PAYMENT_ID, PAYER)
+        .charge_nonce(PAYMENT_ID, CONFIG_HASH)
         .await
         .unwrap();
     assert!(res.nonce.starts_with("0x"));
