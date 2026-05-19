@@ -2,8 +2,6 @@ use std::sync::Arc;
 
 use crate::http::{ClientOptions, HttpClient};
 use crate::payments::PaymentsClient;
-use crate::tokens::TokensClient;
-use crate::utils::UtilsClient;
 
 /// Entry point for the RAIL0 SDK.
 ///
@@ -16,12 +14,10 @@ use crate::utils::UtilsClient;
 /// });
 /// ```
 pub struct Rail0Client {
-    /// Payment lifecycle operations: authorize, charge, capture, void, release, refund.
+    /// Payment lifecycle operations: create_payment, sign, authorize, charge,
+    /// prepare_capture, submit_capture, prepare_void, submit_void, release,
+    /// prepare_approve, submit_approve, prepare_refund, submit_refund.
     pub payments: PaymentsClient,
-    /// Token allowlist queries.
-    pub tokens: TokensClient,
-    /// Contract introspection: domain separator, version.
-    pub utils: UtilsClient,
 }
 
 impl Rail0Client {
@@ -30,8 +26,6 @@ impl Rail0Client {
         let http = Arc::new(HttpClient::new(opts));
         Self {
             payments: PaymentsClient::new(Arc::clone(&http)),
-            tokens: TokensClient::new(Arc::clone(&http)),
-            utils: UtilsClient::new(Arc::clone(&http)),
         }
     }
 }

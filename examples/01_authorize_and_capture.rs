@@ -1,16 +1,15 @@
 // Standard two-step payment flow: authorize → capture
 //
-// The buyer locks funds in escrow using an EIP-3009 signature (authorize).
-// The merchant releases them once the order is fulfilled (capture).
-// If something goes wrong before capture the merchant can void,
-// or anyone can call release after authorization_expiry.
+// The payer creates a payment intent, signs the EIP-712 payload, and
+// submits the signature. The payee then calls authorize (funds move to
+// escrow), prepares a capture transaction, signs it offline, and submits it.
 //
 // On-chain flow:
 //
-//   buyer signs EIP-3009 → authorize()  funds move buyer → escrow
-//   merchant             → capture()    funds move escrow → merchant (minus fee)
-//   merchant             → void()       alternative: funds move escrow → buyer
-//   anyone               → release()    fallback after authorization_expiry
+//   payer signs EIP-712    → authorize()   funds move payer → escrow
+//   payee signs capture tx → capture()     funds move escrow → payee (minus fee)
+//   payee signs void tx    → void()        alternative: funds move escrow → payer
+//   anyone                 → release()     fallback after authorization_expiry
 //
 // Run:
 //
@@ -18,7 +17,10 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rail0::{AuthorizeParams, CaptureParams, ClientOptions, Payment, Rail0Client};
+use rail0::{
+    CapturePaymentRequest, ClientOptions, CreatePaymentRequest, PayerSignatureRequest,
+    PaymentConfig, Rail0Client, SubmitTransactionRequest,
+};
 
 #[tokio::main]
 async fn main() {
@@ -32,12 +34,7 @@ async fn main() {
         .unwrap()
         .as_secs() as i64;
 
-    // A unique ID for this payment — in practice derive it from your order ID,
-    // e.g. keccak256(abi.encode("order", order_id)).
-    let payment_id =
-        "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
-
-    let payment = Payment {
+    let payment = PaymentConfig {
         payer: "0xBuyerAddress000000000000000000000000000000".into(),
         payee: "0xMerchantAddress0000000000000000000000000000".into(),
         token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913".into(), // USDC on Base
@@ -49,94 +46,110 @@ async fn main() {
     };
 
     // ----------------------------------------------------------------
-    // Step 1 — Buyer fetches the authorize nonce, signs EIP-3009, calls authorize
+    // Step 1 — Payer creates a payment intent and signs the EIP-712 payload
     // ----------------------------------------------------------------
 
-    let nonce_resp = client
+    let create_resp = client
         .payments
-        .authorize_nonce(payment_id, &payment.payer)
+        .create_payment(&CreatePaymentRequest {
+            payment: payment.clone(),
+            amount: "50000000".into(),
+            chain_id: 8453, // Base
+            mode: "authorize".into(),
+        })
         .await
-        .unwrap_or_else(|e| panic!("authorize_nonce: {e}"));
+        .unwrap_or_else(|e| panic!("create_payment: {e}"));
 
-    // The buyer builds and signs transferWithAuthorization off-chain.
-    // In production use sign_authorize:
+    println!("Payment ID: {}", create_resp.payment_id);
+    println!("Config hash: {}", create_resp.config_hash);
+
+    // The payer signs create_resp.signing_payload using eth_signTypedData_v4 or sign_authorize:
     //
     //   let key = rail0::hex_to_private_key("0xYourPrivateKey").unwrap();
     //   let sig = rail0::sign_authorize(&rail0::SignPaymentParams {
     //       private_key: key,
     //       payment: payment.clone(),
     //       amount: 50_000_000,
-    //       nonce: nonce_resp.nonce.clone(),
-    //       contract_address: "0xRAIL0ContractAddress".into(),
+    //       nonce: create_resp.signing_payload.message.nonce.clone(),
+    //       contract_address: create_resp.rail0_contract.clone(),
     //       token_domain: rail0::TokenDomain {
-    //           name: "USD Coin".into(), version: "2".into(), chain_id: 8453,
-    //           verifying_contract: payment.token.clone(),
+    //           name: create_resp.signing_payload.domain.name.clone(),
+    //           version: create_resp.signing_payload.domain.version.clone(),
+    //           chain_id: create_resp.signing_payload.domain.chain_id as u64,
+    //           verifying_contract: create_resp.signing_payload.domain.verifying_contract.clone(),
     //       },
     //       valid_after: None,
     //       valid_before: None,
     //   }).unwrap();
 
-    let auth_tx = client
+    // Step 2 — Payer submits the signature
+    let sig_resp = client
         .payments
-        .authorize(
-            payment_id,
-            AuthorizeParams {
-                payment: payment.clone(),
-                amount: "50000000".into(), // 50 USDC
-                v: 27,                     // from signature
+        .sign(
+            &create_resp.payment_id,
+            &PayerSignatureRequest {
+                v: 27, // from signature
                 r: "0x1111111111111111111111111111111111111111111111111111111111111111".into(),
                 s: "0x2222222222222222222222222222222222222222222222222222222222222222".into(),
             },
         )
         .await
+        .unwrap_or_else(|e| panic!("sign: {e}"));
+
+    println!("Signature status: {}", sig_resp.status);
+
+    // ----------------------------------------------------------------
+    // Step 3 — Payee authorizes (relays the stored signature on-chain)
+    // ----------------------------------------------------------------
+
+    let auth_resp = client
+        .payments
+        .authorize(&create_resp.payment_id)
+        .await
         .unwrap_or_else(|e| panic!("authorize: {e}"));
 
-    println!("Authorized: {} — status: {:?}", auth_tx.transaction_hash, auth_tx.status);
-    println!("Nonce used: {}", nonce_resp.nonce);
+    println!("Authorized: tx={} capturable={}", auth_resp.transaction_hash, auth_resp.capturable_amount);
 
     // ----------------------------------------------------------------
-    // Step 2a — Merchant captures 50 USDC (happy path)
+    // Step 4a — Payee prepares and submits a capture transaction
     // ----------------------------------------------------------------
 
-    let capture_tx = client
+    let prep_capture = client
         .payments
-        .capture(
-            payment_id,
-            CaptureParams {
-                payment: payment.clone(),
-                amount: "50000000".into(),
-            },
+        .prepare_capture(
+            &create_resp.payment_id,
+            &CapturePaymentRequest { amount: "50000000".into() },
         )
         .await
-        .unwrap_or_else(|e| panic!("capture: {e}"));
+        .unwrap_or_else(|e| panic!("prepare_capture: {e}"));
 
-    println!("Captured: {}", capture_tx.transaction_hash);
+    // Payee signs prep_capture.unsigned_transaction offline, then submits:
+    //   let signed_tx = payee_wallet.sign_transaction(&prep_capture.unsigned_transaction);
+    let signed_tx = "0x02f8..."; // placeholder
 
-    // ----------------------------------------------------------------
-    // Step 2b — Merchant voids (alternative: order cancelled)
-    // ----------------------------------------------------------------
-
-    // let void_tx = client.payments.void(payment_id, rail0::VoidParams { payment: payment.clone() }).await?;
-
-    // ----------------------------------------------------------------
-    // Step 2c — Release (fallback: merchant never captured)
-    // Only callable after authorization_expiry. Anyone can call this.
-    // ----------------------------------------------------------------
-
-    // let release_tx = client.payments.release(payment_id, rail0::ReleaseParams { payment: payment.clone() }).await?;
-
-    // ----------------------------------------------------------------
-    // Inspect on-chain state at any point
-    // ----------------------------------------------------------------
-
-    let state = client
+    let capture_resp = client
         .payments
-        .get(payment_id)
+        .submit_capture(
+            &create_resp.payment_id,
+            &SubmitTransactionRequest { signed_transaction: signed_tx.into() },
+        )
         .await
-        .unwrap_or_else(|e| panic!("get: {e}"));
+        .unwrap_or_else(|e| panic!("submit_capture: {e}"));
 
-    println!(
-        "Payment state: exists={} capturable={} refundable={}",
-        state.state.exists, state.state.capturable_amount, state.state.refundable_amount
-    );
+    println!("Captured: tx={} captured={}", capture_resp.transaction_hash, capture_resp.captured_amount);
+    let _ = prep_capture;
+
+    // ----------------------------------------------------------------
+    // Step 4b — Alternatively: payee voids (order cancelled)
+    // ----------------------------------------------------------------
+
+    // let prep_void = client.payments.prepare_void(&create_resp.payment_id).await?;
+    // let signed_void = payee_wallet.sign_transaction(&prep_void.unsigned_transaction);
+    // client.payments.submit_void(&create_resp.payment_id, &SubmitTransactionRequest { signed_transaction: signed_void }).await?;
+
+    // ----------------------------------------------------------------
+    // Step 4c — Release (fallback after authorization_expiry, permissionless)
+    // ----------------------------------------------------------------
+
+    // let release_resp = client.payments.release(&create_resp.payment_id).await?;
 }
