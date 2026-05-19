@@ -5,7 +5,7 @@
 use rail0::{
     hex_to_private_key, sign_authorize, sign_charge, sign_transfer_with_authorization,
     SignPaymentParams, SignTransferParams, TokenDomain,
-    Payment,
+    PaymentConfig,
 };
 
 // Anvil account #0 — widely used test key, never use in production.
@@ -24,8 +24,8 @@ fn domain() -> TokenDomain {
     }
 }
 
-fn payment() -> Payment {
-    Payment {
+fn payment() -> PaymentConfig {
+    PaymentConfig {
         payer: PAYER.into(),
         payee: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8".into(),
         token: TOKEN.into(),

@@ -1,23 +1,23 @@
 // Refund flow
 //
 // After a capture (or charge) the merchant can refund up to the full
-// captured amount back to the buyer, as long as refund_expiry has not
-// passed and the refundable_amount is sufficient.
-//
-// The refund is initiated by the payee (merchant). The API submits the
-// transaction on behalf of the payee.
+// captured amount back to the payer, as long as refund_expiry has not
+// passed. The payee must first approve the RAIL0 contract as a spender
+// on the token (so the contract can pull funds back from the payee).
 //
 // On-chain flow:
 //
-//   merchant → refund()  funds move merchant → buyer
+//   payee signs approve tx → approve()  RAIL0 contract approved as spender
+//   payee signs refund tx  → refund()   funds move payee → payer
 //
 // Run:
 //
 //   cargo run --example 03_refund
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
-use rail0::{ClientOptions, Payment, Rail0Client, Rail0Error, RefundParams};
+use rail0::{
+    ApproveRequest, ClientOptions, Rail0Client, Rail0Error, RefundPaymentRequest,
+    SubmitTransactionRequest,
+};
 
 #[tokio::main]
 async fn main() {
@@ -26,58 +26,75 @@ async fn main() {
         ..Default::default()
     });
 
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
-
-    let payment = Payment {
-        payer: "0xBuyerAddress000000000000000000000000000000".into(),
-        payee: "0xMerchantAddress0000000000000000000000000000".into(),
-        token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913".into(),
-        max_amount: "100000000".into(),
-        authorization_expiry: now - 30 * 60,      // already captured
-        refund_expiry: now + 60 * 60 * 24 * 6,    // still within refund window
-        fee_bps: 50,
-        fee_receiver: "0xFeeReceiverAddress000000000000000000000000".into(),
-    };
-
-    let payment_id =
-        "0xdeadbeef00000000000000000000000000000000000000000000000000000002";
+    // Assume the payment was previously created and captured.
+    let payment_id = "0xdeadbeef00000000000000000000000000000000000000000000000000000002";
 
     // ----------------------------------------------------------------
-    // Check current refundable balance before acting
+    // Step 1 — Payee approves the RAIL0 contract as token spender
     // ----------------------------------------------------------------
 
-    let state = client
+    let prep_approve = client
         .payments
-        .get(payment_id)
-        .await
-        .unwrap_or_else(|e| panic!("get: {e}"));
-
-    println!("Refundable balance: {}", state.state.refundable_amount); // e.g. "50000000"
-
-    // ----------------------------------------------------------------
-    // Refund — partial or full
-    // ----------------------------------------------------------------
-
-    let tx = client
-        .payments
-        .refund(
+        .prepare_approve(
             payment_id,
-            RefundParams {
-                payment: payment.clone(),
-                amount: "50000000".into(), // partial refund — 50 USDC out of 50 captured
+            &ApproveRequest {
+                // unlimited approval
+                amount: "115792089237316195423570985008687907853269984665640564039457584007913129639935".into(),
             },
+        )
+        .await
+        .unwrap_or_else(|e| panic!("prepare_approve: {e}"));
+
+    // Payee signs prep_approve.unsigned_transaction offline, then submits:
+    //   let signed_approve = payee_wallet.sign_transaction(&prep_approve.unsigned_transaction);
+    let signed_approve = "0x02f8..."; // placeholder
+
+    let approve_resp = client
+        .payments
+        .submit_approve(
+            payment_id,
+            &SubmitTransactionRequest { signed_transaction: signed_approve.into() },
+        )
+        .await
+        .unwrap_or_else(|e| panic!("submit_approve: {e}"));
+
+    println!("Approved: tx={} spender={}", approve_resp.transaction_hash, approve_resp.spender);
+    let _ = prep_approve;
+
+    // ----------------------------------------------------------------
+    // Step 2 — Payee prepares and submits a refund transaction
+    // ----------------------------------------------------------------
+
+    let prep_refund = client
+        .payments
+        .prepare_refund(
+            payment_id,
+            &RefundPaymentRequest { amount: "50000000".into() },
+        )
+        .await
+        .unwrap_or_else(|e| panic!("prepare_refund: {e}"));
+
+    // Payee signs prep_refund.unsigned_transaction offline, then submits:
+    //   let signed_refund = payee_wallet.sign_transaction(&prep_refund.unsigned_transaction);
+    let signed_refund = "0x02f8..."; // placeholder
+
+    let refund_resp = client
+        .payments
+        .submit_refund(
+            payment_id,
+            &SubmitTransactionRequest { signed_transaction: signed_refund.into() },
         )
         .await
         .unwrap_or_else(|e| {
             if let Rail0Error::Api { code, message, .. } = &e {
-                // Common: RefundExpired, InvalidRefundAmount, NotPayee
-                panic!("Refund failed [{code}]: {message}");
+                panic!("SubmitRefund failed [{code}]: {message}");
             }
-            panic!("refund: {e}");
+            panic!("submit_refund: {e}");
         });
 
-    println!("Refunded: {}", tx.transaction_hash);
+    println!(
+        "Refunded: tx={} refunded={} remaining={}",
+        refund_resp.transaction_hash, refund_resp.refunded_amount, refund_resp.refundable_amount
+    );
+    let _ = prep_refund;
 }

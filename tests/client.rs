@@ -16,8 +16,11 @@ fn make_client(server_url: &str) -> Rail0Client {
 const PAYMENT_ID: &str =
     "0x1111111111111111111111111111111111111111111111111111111111111111";
 
-fn payment_state_body() -> &'static str {
-    r#"{"paymentId":"0x1111111111111111111111111111111111111111111111111111111111111111","state":{"exists":true,"capturableAmount":"50000000","refundableAmount":"0"},"configHash":"0xabababababababababababababababababababababababababababababababababab"}"#
+fn authorize_body() -> String {
+    format!(
+        r#"{{"paymentId":"{PAYMENT_ID}","transactionHash":"0x{}","capturableAmount":"50000000"}}"#,
+        "ab".repeat(32)
+    )
 }
 
 // ================================================================
@@ -25,56 +28,62 @@ fn payment_state_body() -> &'static str {
 // ================================================================
 
 #[tokio::test]
-async fn get_payment_routes_to_correct_path() {
-    let mut server = mockito::Server::new_async().await;
-    let mock = server
-        .mock("GET", format!("/payments/{PAYMENT_ID}").as_str())
-        .with_status(200)
-        .with_header("content-type", "application/json")
-        .with_body(payment_state_body())
-        .create_async()
-        .await;
-
-    let res = make_client(&server.url()).payments.get(PAYMENT_ID).await.unwrap();
-    assert_eq!(res.payment_id, PAYMENT_ID);
-    assert!(res.state.exists);
-    mock.assert_async().await;
-}
-
-#[tokio::test]
 async fn post_authorize_routes_to_correct_path() {
     let mut server = mockito::Server::new_async().await;
     let mock = server
         .mock("POST", format!("/payments/{PAYMENT_ID}/authorize").as_str())
-        .with_status(202)
+        .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(r#"{"transactionHash":"0xabababababababababababababababababababababababababababababababababab","status":"pending"}"#)
+        .with_body(authorize_body())
         .create_async()
         .await;
 
-    use rail0::{AuthorizeParams, Payment};
-    let params = AuthorizeParams {
-        payment: Payment {
-            payer: "0xBuyer".into(),
-            payee: "0xMerchant".into(),
-            token: "0xToken".into(),
-            max_amount: "100000000".into(),
-            authorization_expiry: 9_999_999_999,
-            refund_expiry: 9_999_999_999,
-            fee_bps: 0,
-            fee_receiver: "0x0000000000000000000000000000000000000000".into(),
-        },
-        amount: "50000000".into(),
-        v: 27,
-        r: "0x1111111111111111111111111111111111111111111111111111111111111111".into(),
-        s: "0x2222222222222222222222222222222222222222222222222222222222222222".into(),
-    };
     let res = make_client(&server.url())
         .payments
-        .authorize(PAYMENT_ID, params)
+        .authorize(PAYMENT_ID)
         .await
         .unwrap();
-    assert_eq!(res.status, rail0::TransactionStatus::Pending);
+    assert_eq!(res.payment_id, PAYMENT_ID);
+    assert_eq!(res.capturable_amount, "50000000");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn post_create_payment_routes_to_correct_path() {
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("POST", "/payments")
+        .with_status(201)
+        .with_header("content-type", "application/json")
+        .with_body(format!(
+            r#"{{"paymentId":"{PAYMENT_ID}","configHash":"0x{}","payment":{{"payer":"0x0","payee":"0x0","token":"0x0","maxAmount":"0","authorizationExpiry":0,"refundExpiry":0,"feeBps":0,"feeReceiver":"0x0"}},"amount":"50000000","chainId":8453,"rail0Contract":"0x0","signingPayload":{{"domain":{{"name":"","version":"","chainId":0,"verifyingContract":"0x0"}},"types":{{"TransferWithAuthorization":[]}},"primaryType":"TransferWithAuthorization","message":{{"from":"0x0","to":"0x0","value":"0","validAfter":"0","validBefore":"0","nonce":"0x{}"}}}}}}"#,
+            "cc".repeat(32),
+            "dd".repeat(32)
+        ))
+        .create_async()
+        .await;
+
+    use rail0::{CreatePaymentRequest, PaymentConfig};
+    let res = make_client(&server.url())
+        .payments
+        .create_payment(&CreatePaymentRequest {
+            payment: PaymentConfig {
+                payer: "0xBuyer".into(),
+                payee: "0xMerchant".into(),
+                token: "0xToken".into(),
+                max_amount: "100000000".into(),
+                authorization_expiry: 9_999_999_999,
+                refund_expiry: 9_999_999_999,
+                fee_bps: 0,
+                fee_receiver: "0x0000000000000000000000000000000000000000".into(),
+            },
+            amount: "50000000".into(),
+            chain_id: 8453,
+            mode: "authorize".into(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(res.payment_id, PAYMENT_ID);
     mock.assert_async().await;
 }
 
@@ -86,16 +95,16 @@ async fn post_authorize_routes_to_correct_path() {
 async fn http_404_returns_api_error() {
     let mut server = mockito::Server::new_async().await;
     server
-        .mock("GET", format!("/payments/{PAYMENT_ID}").as_str())
+        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize").as_str())
         .with_status(404)
         .with_header("content-type", "application/json")
-        .with_body(r#"{"error":"PaymentNotFound","message":"No payment exists."}"#)
+        .with_body(r#"{"code":"PaymentNotFound","message":"No payment exists."}"#)
         .create_async()
         .await;
 
     let err = make_client(&server.url())
         .payments
-        .get(PAYMENT_ID)
+        .authorize(PAYMENT_ID)
         .await
         .unwrap_err();
 
@@ -113,16 +122,16 @@ async fn http_404_returns_api_error() {
 async fn http_422_returns_api_error_with_code() {
     let mut server = mockito::Server::new_async().await;
     server
-        .mock("GET", format!("/payments/{PAYMENT_ID}").as_str())
+        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize").as_str())
         .with_status(422)
         .with_header("content-type", "application/json")
-        .with_body(r#"{"error":"AuthorizationExpired","message":"The authorizationExpiry has passed."}"#)
+        .with_body(r#"{"code":"AuthorizationExpired","message":"The authorizationExpiry has passed."}"#)
         .create_async()
         .await;
 
     let err = make_client(&server.url())
         .payments
-        .get(PAYMENT_ID)
+        .authorize(PAYMENT_ID)
         .await
         .unwrap_err();
 
@@ -137,50 +146,46 @@ async fn http_422_returns_api_error_with_code() {
 // ================================================================
 
 #[tokio::test]
-async fn retry_succeeds_on_third_attempt() {
+async fn retry_option_is_accepted() {
     let mut server = mockito::Server::new_async().await;
-    let path = format!("/payments/{PAYMENT_ID}");
+    let path = format!("/payments/{PAYMENT_ID}/authorize");
 
-    // Two network-level failures followed by a success.
+    // Two failures then a success — tests that retry config is wired up.
     server
-        .mock("GET", path.as_str())
-        .with_status(500) // mockito can't close mid-connection, use body to simulate transient
+        .mock("POST", path.as_str())
+        .with_status(500)
         .with_body("fail")
         .expect(2)
         .create_async()
         .await;
     server
-        .mock("GET", path.as_str())
+        .mock("POST", path.as_str())
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(payment_state_body())
+        .with_body(authorize_body())
         .expect(1)
         .create_async()
         .await;
 
-    // A 500 with non-JSON body will fail JSON parsing, which is not a network error and
-    // won't be retried. Instead we verify the retry logic directly by testing with
-    // a client that has retries enabled and a short delay.
+    // 500 is an HTTP error and won't be retried — the test just confirms
+    // the config is accepted and the client behaves predictably.
     let client = Rail0Client::new(ClientOptions {
         base_url: server.url(),
         max_retries: 3,
         retry_delay: Duration::from_millis(1),
         ..Default::default()
     });
-    // The first call hits a 500, which is an HTTP error (not retried).
-    // This test confirms the client option is accepted and the config is respected.
-    let _ = client.payments.get(PAYMENT_ID).await;
+    let _ = client.payments.authorize(PAYMENT_ID).await;
 }
 
 #[tokio::test]
 async fn no_retry_on_http_errors() {
     let mut server = mockito::Server::new_async().await;
-    // Expect exactly 1 call — HTTP errors must not be retried.
     let mock = server
-        .mock("GET", format!("/payments/{PAYMENT_ID}").as_str())
+        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize").as_str())
         .with_status(422)
         .with_header("content-type", "application/json")
-        .with_body(r#"{"error":"AuthorizationExpired","message":"expired"}"#)
+        .with_body(r#"{"code":"AuthorizationExpired","message":"expired"}"#)
         .expect(1)
         .create_async()
         .await;
@@ -191,7 +196,7 @@ async fn no_retry_on_http_errors() {
         retry_delay: Duration::from_millis(1),
         ..Default::default()
     });
-    let _ = client.payments.get(PAYMENT_ID).await;
+    let _ = client.payments.authorize(PAYMENT_ID).await;
     mock.assert_async().await;
 }
 
@@ -203,10 +208,10 @@ async fn no_retry_on_http_errors() {
 async fn logger_receives_entry_on_success() {
     let mut server = mockito::Server::new_async().await;
     server
-        .mock("GET", format!("/payments/{PAYMENT_ID}").as_str())
+        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize").as_str())
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(payment_state_body())
+        .with_body(authorize_body())
         .create_async()
         .await;
 
@@ -220,11 +225,11 @@ async fn logger_receives_entry_on_success() {
         })),
         ..Default::default()
     });
-    client.payments.get(PAYMENT_ID).await.unwrap();
+    client.payments.authorize(PAYMENT_ID).await.unwrap();
 
     let log = entries.lock().unwrap();
     assert_eq!(log.len(), 1);
-    assert_eq!(log[0].method, "GET");
+    assert_eq!(log[0].method, "POST");
     assert_eq!(log[0].status, Some(200));
     assert!(log[0].error.is_none());
 }
@@ -233,10 +238,10 @@ async fn logger_receives_entry_on_success() {
 async fn logger_receives_error_entry_on_http_error() {
     let mut server = mockito::Server::new_async().await;
     server
-        .mock("GET", format!("/payments/{PAYMENT_ID}").as_str())
+        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize").as_str())
         .with_status(404)
         .with_header("content-type", "application/json")
-        .with_body(r#"{"error":"PaymentNotFound","message":"not found"}"#)
+        .with_body(r#"{"code":"PaymentNotFound","message":"not found"}"#)
         .create_async()
         .await;
 
@@ -250,7 +255,7 @@ async fn logger_receives_error_entry_on_http_error() {
         })),
         ..Default::default()
     });
-    let _ = client.payments.get(PAYMENT_ID).await;
+    let _ = client.payments.authorize(PAYMENT_ID).await;
 
     let log = entries.lock().unwrap();
     assert_eq!(log[0].status, Some(404));
@@ -261,10 +266,10 @@ async fn logger_receives_error_entry_on_http_error() {
 async fn debug_logger_does_not_panic() {
     let mut server = mockito::Server::new_async().await;
     server
-        .mock("GET", format!("/payments/{PAYMENT_ID}").as_str())
+        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize").as_str())
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(payment_state_body())
+        .with_body(authorize_body())
         .create_async()
         .await;
 
@@ -273,5 +278,5 @@ async fn debug_logger_does_not_panic() {
         logger: Some(rail0::debug_logger()),
         ..Default::default()
     });
-    client.payments.get(PAYMENT_ID).await.unwrap();
+    client.payments.authorize(PAYMENT_ID).await.unwrap();
 }

@@ -3,7 +3,7 @@ use k256::ecdsa::SigningKey;
 use sha3::{Digest, Keccak256};
 
 use crate::error::Rail0Error;
-use crate::types::{Address, Bytes32, Payment};
+use crate::types::{Address, Bytes32, PaymentConfig};
 
 // ================================================================
 //  EIP-712 type strings and pre-computed type hashes
@@ -80,7 +80,7 @@ pub struct SignPaymentParams {
     /// 32-byte secp256k1 private key of the payer.
     /// Use [`hex_to_private_key`] to convert from a `0x`-prefixed hex string.
     pub private_key: Vec<u8>,
-    pub payment: Payment,
+    pub payment: PaymentConfig,
     /// Amount to pull from the payer, in token base units.
     pub amount: u128,
     /// Nonce from `authorize_nonce` or `charge_nonce`.
@@ -225,7 +225,7 @@ fn do_sign(private_key: &[u8], digest: &[u8; 32]) -> Result<Eip3009Signature, Ra
 /// Signs a raw EIP-3009 `transferWithAuthorization` message.
 ///
 /// For RAIL0 payment flows prefer [`sign_authorize`] or [`sign_charge`], which derive
-/// `from`, `to`, and `valid_before` automatically from the [`Payment`] struct.
+/// `from`, `to`, and `valid_before` automatically from the [`PaymentConfig`] struct.
 pub fn sign_transfer_with_authorization(
     private_key: &[u8],
     domain: &TokenDomain,
@@ -246,20 +246,26 @@ pub fn sign_transfer_with_authorization(
 
 /// Signs the EIP-3009 payload required by an `authorize` call.
 ///
+/// The nonce comes from `create_payment` response: `resp.signing_payload.message.nonce`.
+///
 /// ```no_run
 /// # use rail0::*;
 /// # async fn example(client: &Rail0Client) {
-/// # let payment: Payment = todo!();
-/// let hash_resp = client.payments.hash(&payment).await.unwrap();
-/// let nonce = client.payments.authorize_nonce("0xpaymentId", &hash_resp.hash).await.unwrap();
+/// # let payment: PaymentConfig = todo!();
+/// # let create_resp: CreatePaymentResponse = todo!();
 /// let key = hex_to_private_key("0xYourPrivateKey").unwrap();
 /// let sig = sign_authorize(&SignPaymentParams {
 ///     private_key: key,
 ///     payment,
 ///     amount: 50_000_000,
-///     nonce: nonce.nonce,
-///     contract_address: "0xRAIL0Contract".into(),
-///     token_domain: TokenDomain { name: "USD Coin".into(), version: "2".into(), chain_id: 8453, verifying_contract: "0xToken".into() },
+///     nonce: create_resp.signing_payload.message.nonce,
+///     contract_address: create_resp.rail0_contract,
+///     token_domain: TokenDomain {
+///         name: create_resp.signing_payload.domain.name,
+///         version: create_resp.signing_payload.domain.version,
+///         chain_id: create_resp.signing_payload.domain.chain_id as u64,
+///         verifying_contract: create_resp.signing_payload.domain.verifying_contract,
+///     },
 /// }).unwrap();
 /// # }
 /// ```
@@ -278,8 +284,8 @@ pub fn sign_authorize(params: &SignPaymentParams) -> Result<Eip3009Signature, Ra
 
 /// Signs the EIP-3009 payload required by a `charge` call.
 ///
-/// Use [`payments.charge_nonce`](crate::PaymentsClient::charge_nonce) to obtain the nonce —
-/// it is different from the authorize nonce.
+/// Use the nonce from `create_payment` response (`signing_payload.message.nonce`),
+/// obtained with `mode: "charge"` to get a charge-specific nonce.
 pub fn sign_charge(params: &SignPaymentParams) -> Result<Eip3009Signature, Rail0Error> {
     sign_authorize(params)
 }

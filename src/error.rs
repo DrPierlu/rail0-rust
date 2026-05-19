@@ -34,6 +34,6 @@ pub enum Rail0Error {
 /// Shape of error responses from the RAIL0 API (internal, for deserialisation).
 #[derive(Debug, serde::Deserialize)]
 pub(crate) struct ApiErrorBody {
-    pub error: String,
+    pub code: String,
     pub message: String,
 }

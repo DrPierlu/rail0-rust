@@ -4,9 +4,7 @@ pub mod http;
 pub mod payments;
 pub mod signing;
 pub mod stablecoins;
-pub mod tokens;
 pub mod types;
-pub mod utils;
 
 // ================================================================
 //  Flat public re-exports
@@ -23,11 +21,11 @@ pub use signing::{
 pub use stablecoins::{
     chain_info, eip2612_tokens, eip3009_tokens, ChainStablecoins, StablecoinInfo, StablecoinToken,
 };
-pub use tokens::TokensClient;
 pub use types::{
-    Address, AuthorizeParams, Bytes32, CaptureParams, ChargeParams, DomainSeparatorResponse,
-    HashResponse, NonceResponse, Payment, PaymentResponse, PaymentState, RefundParams,
-    ReleaseParams, TokenStatusResponse, TransactionResponse, TransactionStatus, Uint256String,
-    VersionResponse, VoidParams,
+    Address, ApiError, ApproveRequest, ApproveResponse, AuthorizePaymentResponse, Bytes32,
+    CapturePaymentRequest, CapturePaymentResponse, ChargePaymentResponse, CreatePaymentRequest,
+    CreatePaymentResponse, EIP3009Message, EIP712Domain, EIP712TypeEntry, EIP712Types,
+    PayerSignatureRequest, PayerSignatureResponse, PaymentConfig, PrepareTransactionResponse,
+    RefundPaymentRequest, RefundPaymentResponse, ReleasePaymentResponse, SigningPayload,
+    SubmitTransactionRequest, Uint256String, VoidPaymentResponse,
 };
-pub use utils::UtilsClient;

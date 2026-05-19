@@ -136,6 +136,14 @@ impl HttpClient {
         self.execute(reqwest::Method::POST, path, Some(body)).await
     }
 
+    pub async fn put<B: Serialize, T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, Rail0Error> {
+        self.execute(reqwest::Method::PUT, path, Some(body)).await
+    }
+
     async fn execute<B: Serialize, T: DeserializeOwned>(
         &self,
         method: reqwest::Method,
@@ -219,7 +227,7 @@ impl HttpClient {
                     let api_err = match resp.json::<ApiErrorBody>().await {
                         Ok(body) => Rail0Error::Api {
                             status: status.as_u16(),
-                            code: body.error,
+                            code: body.code,
                             message: body.message,
                         },
                         Err(_) => Rail0Error::Api {
