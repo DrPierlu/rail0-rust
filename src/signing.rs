@@ -70,8 +70,8 @@ pub struct SignTransferParams {
 
 /// Parameters for [`sign_authorize`] and [`sign_charge`].
 ///
-/// Obtain `nonce` from [`payments.authorize_nonce`](crate::PaymentsClient::authorize_nonce)
-/// or [`payments.charge_nonce`](crate::PaymentsClient::charge_nonce).
+/// Obtain `nonce` from the [`create_payment`](crate::PaymentsClient::create_payment)
+/// response: `resp.signing_payload.message.nonce`.
 ///
 /// The contract hardcodes `validAfter=0` and `validBefore=payment.authorization_expiry`;
 /// these are not configurable by the caller.
@@ -83,7 +83,7 @@ pub struct SignPaymentParams {
     pub payment: PaymentConfig,
     /// Amount to pull from the payer, in token base units.
     pub amount: u128,
-    /// Nonce from `authorize_nonce` or `charge_nonce`.
+    /// Nonce from `create_payment` response: `resp.signing_payload.message.nonce`.
     pub nonce: Bytes32,
     pub contract_address: Address,
     pub token_domain: TokenDomain,
