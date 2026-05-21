@@ -1,6 +1,6 @@
 # rail0-rust
 
-Rust SDK for the [RAIL0](https://github.com/rail0/rail0) stablecoin payment API.
+Rust SDK for the [RAIL0](https://github.com/commercelayer/rail0) stablecoin payment API.
 
 RAIL0 is an immutable smart contract that brings the authorize → capture → refund lifecycle of card networks to stablecoin payments — no intermediaries, no protocol fees, no permission required. This SDK wraps the REST API that sits in front of the contract, giving you fully-typed access to every operation.
 
@@ -20,89 +20,87 @@ tokio = { version = "1", features = ["full"] }
 ## Quick start
 
 ```rust
-use rail0::{Rail0Client, ClientOptions, Payment, AuthorizeParams, CaptureParams};
-use std::time::{SystemTime, UNIX_EPOCH};
+use rail0::{Rail0Client, ClientOptions, CreatePaymentRequest, PaymentConfig,
+            PayerSignatureRequest, SubmitTransactionRequest};
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = Rail0Client::new(ClientOptions {
         base_url: "https://api.rail0.xyz".into(),
         ..Default::default()
     });
 
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+    // Step 1 — discover payment methods
+    let methods = client.merchants.payment_methods(1).await?;
+    let usdc = &methods[0]; // pick USDC on the target chain
 
-    let payment = Payment {
-        payer:               "0xBuyer...".into(),
-        payee:               "0xMerchant...".into(),
-        token:               "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913".into(), // USDC on Base
-        amount:              "100000000".into(),        // 100 USDC (6 decimals)
-        authorization_expiry: now + 3600 * 24,          // 24 h to capture
-        refund_expiry:        now + 3600 * 24 * 7,      // 7-day refund window
-        fee_bps:              0,
-        fee_receiver:         "0x0000000000000000000000000000000000000000".into(),
-    };
+    // Step 2 — create payment intent
+    let resp = client.payments.create_payment(&CreatePaymentRequest {
+        payment: PaymentConfig {
+            payer: "0xBuyer...".into(),
+            payee: usdc.wallet_address.clone(),
+            token: usdc.token_address.clone(),
+            ..Default::default()
+        },
+        amount: "50000000".into(), // 50 USDC (6 decimals)
+        chain_id: usdc.chain_id as i64,
+        mode: "authorize".into(),
+    }).await?;
 
-    let payment_id = "0xabc..."; // your unique identifier for this payment
-
-    // Step 1 — get the nonce for the payer's EIP-3009 signature
-    let nonce = client.payments.authorize_nonce(payment_id, &payment.payer).await.unwrap();
-
-    // Step 2 — sign off-chain (payer's private key never leaves the client)
-    let key = rail0::hex_to_private_key("0x...").unwrap();
+    // Step 3 — payer signs the EIP-3009 payload off-chain
+    let key = rail0::hex_to_private_key("0x...")?;
     let sig = rail0::sign_authorize(&rail0::SignPaymentParams {
         private_key:      key,
-        payment:          payment.clone(),
-        amount:           50_000_000,
-        nonce:            nonce.nonce,
-        contract_address: "0xRAIL0ContractAddress...".into(),
-        token_domain:     rail0::TokenDomain {
-            name:               "USD Coin".into(),
-            version:            "2".into(),
-            chain_id:           8453,
-            verifying_contract: payment.token.clone(),
+        payment:          resp.payment.clone(),
+        amount:           resp.amount.parse()?,
+        nonce:            resp.signing_payload.message.nonce.clone(),
+        contract_address: resp.rail0_contract.clone(),
+        token_domain: rail0::TokenDomain {
+            name: "USD Coin".into(), version: "2".into(),
+            chain_id: usdc.chain_id as i64,
+            verifying_contract: usdc.token_address.clone(),
         },
-        valid_after:  None,
-        valid_before: None,
-    }).unwrap();
+        valid_after: None, valid_before: None,
+    })?;
 
-    // Step 3 — payer locks funds in escrow
-    client.payments.authorize(payment_id, AuthorizeParams {
-        payment: payment.clone(),
-        amount: "50000000".into(),
-        v: sig.v,
-        r: sig.r,
-        s: sig.s,
-    }).await.unwrap();
+    // Step 4 — submit payer signature
+    client.payments.sign(&resp.payment_id, &PayerSignatureRequest {
+        v: sig.v, r: sig.r, s: sig.s,
+    }).await?;
 
-    // Step 4 — merchant releases them
-    let tx = client.payments.capture(payment_id, CaptureParams {
-        payment: payment.clone(),
-        amount: "50000000".into(),
-    }).await.unwrap();
+    // Step 5 — payee prepares the unsigned authorize tx
+    let tx = client.payments.authorize(&resp.payment_id).await?;
+    // sign tx.unsigned_transaction with payee's EIP-1559 key
 
-    println!("{} {:?}", tx.transaction_hash, tx.status);
+    // Step 6 — broadcast signed authorize tx
+    client.payments.submit_authorize(&resp.payment_id, &SubmitTransactionRequest {
+        signed_transaction: signed_bytes,
+    }).await?;
+
+    println!("authorized: {}", resp.payment_id);
+    Ok(())
 }
 ```
 
 ## Payment lifecycle
 
 ```text
-                    authorization_expiry         refund_expiry
-                           │                         │
-  ─────────────────────────┼─────────────────────────┼──────▶ time
-   authorize / charge       │   capture / void         │   refund
-                            │   release (permissionless)
+                            authorizationExpiry       refundExpiry
+                                   │                       │
+  ─────────────────────────────────┼───────────────────────┼──────▶ time
+   create → sign → authorize       │   capture / void       │   approve+refund
+                                    │   release              │
 ```
 
 | Operation | Caller | What it does |
 |-----------|--------|--------------|
-| `authorize` | payer | Locks `amount` in escrow via EIP-3009 signature |
-| `charge` | payer | Authorize + capture in one transaction |
-| `capture` | payee | Moves escrowed funds to the merchant |
-| `void` | payee | Cancels the hold, returns funds to the payer |
-| `release` | anyone | Reclaims escrow after `authorization_expiry` with no capture |
-| `refund` | payee | Returns previously captured funds to the payer |
+| `authorize` + `submit_authorize` | payee | Prepare + broadcast the authorize tx; funds move to escrow |
+| `charge` | payee | Server-side one-shot: authorize + capture with no escrow window |
+| `prepare_capture` + `submit_capture` | payee | Moves escrowed funds to the merchant |
+| `prepare_void` + `submit_void` | payee | Cancels the hold, returns funds to the payer |
+| `prepare_release` + `submit_release` | anyone | Reclaims escrow after `authorization_expiry` |
+| `prepare_approve` + `submit_approve` | payee | ERC-20 `approve()` required before a refund |
+| `prepare_refund` + `submit_refund` | payee | Returns captured funds to the payer |
 
 ## API reference
 
@@ -112,11 +110,11 @@ async fn main() {
 let client = Rail0Client::new(ClientOptions {
     base_url:    "https://api.rail0.xyz".into(),
     headers:     [("Authorization".into(), "Bearer ...".into())].into(),
-    timeout:     Duration::from_secs(30),   // default 30s
-    max_retries: 3,                         // default 0 (no retry)
+    timeout:     Duration::from_secs(30),    // default 30s
+    max_retries: 3,                          // default 0 (no retry)
     retry_delay: Duration::from_millis(200), // base delay, doubles each attempt
-    logger:      Some(debug_logger()),       // optional
-    client:      None,                       // optional — custom reqwest::Client
+    logger:      Some(rail0::debug_logger()),
+    ..Default::default()
 });
 ```
 
@@ -127,10 +125,8 @@ let client = Rail0Client::new(ClientOptions {
 Pass any `Arc<dyn Fn(LogEntry) + Send + Sync>` as `logger` to receive structured log entries.
 
 ```rust
-// Built-in logger — writes one line per request to stderr
 let client = Rail0Client::new(ClientOptions {
-    base_url: "https://api.rail0.xyz".into(),
-    logger: Some(rail0::debug_logger()),
+    logger: Some(rail0::debug_logger()), // writes one line per request to stderr
     ..Default::default()
 });
 ```
@@ -138,10 +134,10 @@ let client = Rail0Client::new(ClientOptions {
 Output:
 ```text
 [rail0] GET 200 https://.../payments/0x... 87ms
-[rail0] ERROR POST https://.../payments/0x.../authorize ! connection refused
+[rail0] ERROR POST https://.../payments/0x.../capture ! connection refused
 ```
 
-To integrate with `tracing` or any other logging crate:
+To integrate with `tracing`:
 
 ```rust
 let client = Rail0Client::new(ClientOptions {
@@ -149,26 +145,25 @@ let client = Rail0Client::new(ClientOptions {
         if e.error.is_some() {
             tracing::error!(method = %e.method, url = %e.url, "rail0 request failed");
         } else {
-            tracing::debug!(method = %e.method, status = ?e.status, ms = e.duration_ms, "rail0 request");
+            tracing::debug!(method = %e.method, status = ?e.status, ms = e.duration_ms);
         }
     })),
     ..Default::default()
 });
 ```
 
-`LogEntry` fields:
+---
 
-| Field | Type | Present |
-|-------|------|---------|
-| `method` | `String` | always |
-| `url` | `String` | always |
-| `duration_ms` | `u64` | always |
-| `request_body` | `Option<Value>` | POST requests |
-| `status` | `Option<u16>` | when a response was received |
-| `response_body` | `Option<Value>` | when a response was received |
-| `error` | `Option<String>` | on HTTP errors and network failures |
-| `attempt` | `Option<u32>` | when `max_retries > 0` |
-| `will_retry` | `bool` | when `max_retries > 0` and a retry is scheduled |
+### `client.merchants`
+
+#### `.payment_methods(merchant_id)` → `Result<Vec<PaymentMethod>, Rail0Error>`
+
+Returns the active payment methods (chain + token + wallet) for a merchant.
+
+```rust
+let methods = client.merchants.payment_methods(1).await?;
+// methods[0].chain_id, .token_address, .wallet_address, .token_symbol, .chain_slug
+```
 
 ---
 
@@ -176,117 +171,116 @@ let client = Rail0Client::new(ClientOptions {
 
 All methods are `async` and return `Result<T, Rail0Error>`.
 
-#### `.get(payment_id)`
+#### `.get(payment_id)` → `PaymentResponse`
 
-Returns the on-chain state and config hash for a payment.
+Fetches the current payment state (DB status + live on-chain escrow balances).
 
 ```rust
-let res = client.payments.get(payment_id).await?;
-// res.state: PaymentState { exists, capturable_amount, refundable_amount }
-// res.config_hash: EIP-712 digest committed on creation
+let res = client.payments.get(&payment_id).await?;
+// res.status, res.on_chain.capturable_amount, res.on_chain.refundable_amount
 ```
 
-#### `.authorize(payment_id, params)`
+#### `.create_payment(params)` → `CreatePaymentResponse`
 
-Locks `amount` from the payer into escrow. Build the EIP-3009 signature with `sign_authorize`.
+Creates a payment intent. Returns `signing_payload` for the payer to sign, plus `rail0_contract`.
 
-#### `.charge(payment_id, params)`
+#### `.sign(payment_id, params)` → `PayerSignatureResponse`
 
-Authorize and capture in one transaction. Build the EIP-3009 signature with `sign_charge`.
+Submits the payer's EIP-712 signature (v, r, s).
 
-#### `.capture(payment_id, params)` / `.void(payment_id, params)`
+#### `.authorize(payment_id)` → `PrepareTransactionResponse`
 
-Capture escrowed funds or void (return them to payer). Caller must be the payee.
+Prepares the unsigned `authorize()` transaction. Called by the payee. Sign `unsigned_transaction` with the payee's key and pass to `submit_authorize`.
 
-#### `.release(payment_id, params)`
+#### `.submit_authorize(payment_id, params)` → `AuthorizePaymentResponse`
 
-Return escrowed funds to the payer after `authorization_expiry`. Permissionless.
-
-#### `.refund(payment_id, params)`
-
-Return a previously captured amount to the payer. Must be called before `refund_expiry`.
-
-#### `.authorize_nonce(payment_id, payer)` / `.charge_nonce(payment_id, payer)`
-
-Returns the EIP-3009 nonce to include in the payer's signature.
-
-#### `.hash(payment)`
-
-Computes the EIP-712 digest of a `Payment` configuration.
-
----
-
-### `client.tokens`
-
-#### `.is_accepted(address)`
-
-Returns whether the given ERC-20 token is in this deployment's allowlist.
-
----
-
-### `client.utils`
-
-#### `.domain_separator()`
-
-Returns the EIP-712 domain separator for the RAIL0 contract.
-
-#### `.version()`
-
-Returns the contract version number.
-
----
-
-### Off-chain signing
-
-RAIL0 uses EIP-3009 `transferWithAuthorization` — the payer signs a payload off-chain and the API
-submits the transaction on their behalf (gasless for the payer).
+Broadcasts the signed authorize transaction. Funds are moved to escrow.
 
 ```rust
-// 1. Get the nonce for this (payment_id, payer) pair
-let nonce = client.payments.authorize_nonce(payment_id, &payment.payer).await?;
+let tx = client.payments.authorize(&payment_id).await?;
+let res = client.payments.submit_authorize(&payment_id, &SubmitTransactionRequest {
+    signed_transaction: signed_bytes,
+}).await?;
+// res.transaction_hash, res.capturable_amount
+```
 
-// 2. Sign
-let key = rail0::hex_to_private_key("0xYourPrivateKey...")?;
-let sig = rail0::sign_authorize(&rail0::SignPaymentParams {
-    private_key:      key,
-    payment:          payment.clone(),
-    amount:           50_000_000,
-    nonce:            nonce.nonce,
-    contract_address: "0xRAIL0...".into(),
-    token_domain:     rail0::TokenDomain {
-        name:               "USD Coin".into(),
-        version:            "2".into(),
-        chain_id:           8453,
-        verifying_contract: payment.token.clone(),
-    },
-    valid_after:  None,
-    valid_before: None,
-})?;
+#### `.charge(payment_id)` → `ChargePaymentResponse`
 
-// 3. Submit
-client.payments.authorize(payment_id, AuthorizeParams {
-    payment, amount: "50000000".into(), v: sig.v, r: sig.r, s: sig.s,
+Server-side one-shot: authorize + capture in a single transaction. No `submit` step. Called by the payee.
+
+#### `.prepare_capture(payment_id, params)` / `.submit_capture(payment_id, params)`
+
+Build and broadcast the capture transaction. Partial captures are supported.
+
+```rust
+let tx = client.payments.prepare_capture(&payment_id, &CapturePaymentRequest {
+    amount: "50000000".into(),
+}).await?;
+let res = client.payments.submit_capture(&payment_id, &SubmitTransactionRequest {
+    signed_transaction: signed,
+}).await?;
+// res.captured_amount, res.capturable_amount, res.refundable_amount
+```
+
+#### `.prepare_void(payment_id)` / `.submit_void(payment_id, params)`
+
+Void the authorization — releases all escrowed funds to the payer.
+
+#### `.prepare_release(payment_id, params)` / `.submit_release(payment_id, params)`
+
+Release escrowed funds after `authorization_expiry`. Set `caller_address` in `ReleaseRequest` for buyer-initiated release.
+
+```rust
+let tx = client.payments.prepare_release(&payment_id, &ReleaseRequest {
+    caller_address: Some(buyer_address),
+}).await?;
+client.payments.submit_release(&payment_id, &SubmitTransactionRequest {
+    signed_transaction: buyer_signed,
 }).await?;
 ```
 
-`sign_charge` works the same way — use `.charge_nonce` to obtain the nonce.
+#### `.prepare_approve(payment_id, params)` / `.submit_approve(payment_id, params)`
 
-For raw control use `sign_transfer_with_authorization`:
+ERC-20 `approve()` before a refund. Include `amount` in `SubmitApproveRequest` so the API records it.
 
 ```rust
-let sig = rail0::sign_transfer_with_authorization(
-    &key,
-    &domain,
-    rail0::SignTransferParams {
-        from:         payment.payer.clone(),
-        to:           contract_address.into(),
-        value:        50_000_000,
-        valid_after:  None,                              // 0 = immediate
-        valid_before: payment.authorization_expiry as u128,
-        nonce:        nonce.nonce,
-    },
-)?;
+let tx = client.payments.prepare_approve(&payment_id, &ApproveRequest {
+    amount: "50000000".into(),
+}).await?;
+client.payments.submit_approve(&payment_id, &SubmitApproveRequest {
+    signed_transaction: signed,
+    amount: Some("50000000".into()),
+}).await?;
 ```
+
+#### `.prepare_refund(payment_id, params)` / `.submit_refund(payment_id, params)`
+
+Build and broadcast the refund transaction. Partial refunds are supported.
+
+---
+
+## Off-chain signing
+
+RAIL0 uses EIP-3009 `transferWithAuthorization` — the payer signs off-chain and the API submits on their behalf (gasless for the payer).
+
+```rust
+let key = rail0::hex_to_private_key("0xYourPrivateKey...")?;
+let sig = rail0::sign_authorize(&rail0::SignPaymentParams {
+    private_key:      key,
+    payment:          resp.payment.clone(),
+    amount:           resp.amount.parse()?,
+    nonce:            resp.signing_payload.message.nonce.clone(),
+    contract_address: resp.rail0_contract.clone(),
+    token_domain: rail0::TokenDomain {
+        name: "USD Coin".into(), version: "2".into(),
+        chain_id: 84532, verifying_contract: token.clone(),
+    },
+    valid_after: None, valid_before: None,
+})?;
+// sig.v, sig.r, sig.s — pass to sign()
+```
+
+Use `sign_charge` instead of `sign_authorize` when `mode: "charge"`.
 
 ---
 
@@ -304,14 +298,14 @@ println!("chain_id: {}", info.chain_id); // 8453
 
 ---
 
-### Error handling
+## Error handling
 
 Every non-2xx response is returned as `Rail0Error::Api`:
 
 ```rust
 use rail0::Rail0Error;
 
-match client.payments.capture(payment_id, params).await {
+match client.payments.submit_capture(&payment_id, &params).await {
     Err(Rail0Error::Api { status, code, message }) => {
         eprintln!("HTTP {status}: [{code}] {message}");
     }
@@ -327,70 +321,44 @@ Common error codes:
 |------|-------|
 | `PaymentAlreadyExists` | `authorize`/`charge` called twice with the same `payment_id` |
 | `PaymentNotFound` | `payment_id` does not exist |
-| `PaymentMismatch` | `payment` config does not match the stored hash |
 | `AuthorizationExpired` | `authorization_expiry` is in the past (capture) |
 | `AuthorizationNotExpired` | `authorization_expiry` has not passed yet (release) |
 | `RefundExpired` | `refund_expiry` is in the past |
 | `InvalidAmount` | `amount` is 0 |
-| `TokenNotAccepted` | token is not in this deployment's allowlist |
 | `NotPayee` | caller is not `payment.payee` |
 
 ---
 
 ## Development
 
-### Run tests
-
 ```bash
 cargo test
-```
 
-### Run examples
-
-```bash
-cargo run --example 01_authorize_and_capture
-cargo run --example 02_charge
-cargo run --example 03_refund
-```
-
-### Regenerate types after an API change
-
-```bash
+# Regenerate src/types_gen.rs after an API change:
 # 1. Update the schema in rail0-api (sibling repo),
 #    or set RAIL0_SCHEMA_PATH to point to a local file.
-
-# 2. Regenerate src/types_gen.rs
+# 2. Regenerate:
 cargo run --bin generate
-
-# 3. Check for breakage
 cargo build
 ```
-
----
 
 ## Project structure
 
 ```text
-gen/              Generation pipeline (schema from rail0-api)
-  generate.rs     generates src/types_gen.rs from the schema
-  README.md
-
-tests/            test suite
-  signing.rs      signing utility tests (EIP-712 cross-check)
-  client.rs       HTTP client tests (retry, logging, error handling)
-  integration.rs  endpoint shape tests (mockito mock server)
-
-src/              package rail0 — SDK source
+src/
   lib.rs          public re-exports
-  client.rs       Rail0Client struct
-  types.rs        public types (hand-documented)
-  error.rs        Rail0Error
-  http.rs         internal HTTP client (retry, logging)
+  client.rs       Rail0Client
+  merchants.rs    MerchantsClient
   payments.rs     PaymentsClient
-  tokens.rs       TokensClient
-  utils.rs        UtilsClient
+  types.rs        hand-documented types
+  types_gen.rs    generated types (never hand-edited)
   signing.rs      EIP-712/EIP-3009 off-chain signing
   stablecoins.rs  stablecoin address registry
+  http.rs         internal HTTP client (retry, logging)
+  error.rs        Rail0Error
+
+gen/
+  generate.rs     generates types_gen.rs from the schema
 
 Cargo.toml
 ```
