@@ -102,13 +102,27 @@ async fn main() {
     // Step 3 — Payee authorizes (relays the stored signature on-chain)
     // ----------------------------------------------------------------
 
-    let auth_resp = client
+    let prep_authorize = client
         .payments
         .authorize(&create_resp.payment_id)
         .await
         .unwrap_or_else(|e| panic!("authorize: {e}"));
 
+    // Payee signs prep_authorize.unsigned_transaction offline, then submits:
+    //   let signed_auth_tx = payee_wallet.sign_transaction(&prep_authorize.unsigned_transaction);
+    let signed_auth_tx = "0x02f8..."; // placeholder
+
+    let auth_resp = client
+        .payments
+        .submit_authorize(
+            &create_resp.payment_id,
+            &SubmitTransactionRequest { signed_transaction: signed_auth_tx.into() },
+        )
+        .await
+        .unwrap_or_else(|e| panic!("submit_authorize: {e}"));
+
     println!("Authorized: tx={} capturable={}", auth_resp.transaction_hash, auth_resp.capturable_amount);
+    let _ = prep_authorize;
 
     // ----------------------------------------------------------------
     // Step 4a — Payee prepares and submits a capture transaction

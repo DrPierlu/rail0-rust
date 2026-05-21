@@ -16,7 +16,7 @@
 
 use rail0::{
     ApproveRequest, ClientOptions, Rail0Client, Rail0Error, RefundPaymentRequest,
-    SubmitTransactionRequest,
+    SubmitApproveRequest, SubmitTransactionRequest,
 };
 
 #[tokio::main]
@@ -53,7 +53,7 @@ async fn main() {
         .payments
         .submit_approve(
             payment_id,
-            &SubmitTransactionRequest { signed_transaction: signed_approve.into() },
+            &SubmitApproveRequest { signed_transaction: signed_approve.into(), amount: None },
         )
         .await
         .unwrap_or_else(|e| panic!("submit_approve: {e}"));

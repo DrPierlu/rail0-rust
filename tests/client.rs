@@ -17,10 +17,7 @@ const PAYMENT_ID: &str =
     "0x1111111111111111111111111111111111111111111111111111111111111111";
 
 fn authorize_body() -> String {
-    format!(
-        r#"{{"paymentId":"{PAYMENT_ID}","transactionHash":"0x{}","capturableAmount":"50000000"}}"#,
-        "ab".repeat(32)
-    )
+    r#"{"unsignedTransaction":"0x02f8beef","to":"0x0","data":"0x","chainId":8453,"nonce":1,"maxFeePerGas":"1000000000","maxPriorityFeePerGas":"1000000000","gasLimit":"100000"}"#.to_string()
 }
 
 // ================================================================
@@ -43,8 +40,8 @@ async fn post_authorize_routes_to_correct_path() {
         .authorize(PAYMENT_ID)
         .await
         .unwrap();
-    assert_eq!(res.payment_id, PAYMENT_ID);
-    assert_eq!(res.capturable_amount, "50000000");
+    assert!(!res.unsigned_transaction.is_empty());
+    assert_eq!(res.chain_id, 8453);
     mock.assert_async().await;
 }
 
