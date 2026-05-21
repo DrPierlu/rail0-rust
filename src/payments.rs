@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::error::Rail0Error;
 use crate::http::HttpClient;
 use crate::types::{
-    ApproveRequest, ApproveResponse, AuthorizePaymentResponse, Bytes32, CapturePaymentRequest,
+    ApproveRequest, ApproveResponse, AuthorizePaymentResponse, CapturePaymentRequest,
     CapturePaymentResponse, ChargePaymentResponse, CreatePaymentRequest, CreatePaymentResponse,
     PayerSignatureRequest, PayerSignatureResponse, PaymentResponse, PrepareTransactionResponse,
     RefundPaymentRequest, RefundPaymentResponse, ReleasePaymentResponse, ReleaseRequest,
