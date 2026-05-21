@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::http::{ClientOptions, HttpClient};
+use crate::merchants::MerchantsClient;
 use crate::payments::PaymentsClient;
 
 /// Entry point for the RAIL0 SDK.
@@ -14,9 +15,12 @@ use crate::payments::PaymentsClient;
 /// });
 /// ```
 pub struct Rail0Client {
-    /// Payment lifecycle operations: create_payment, sign, authorize, charge,
-    /// prepare_capture, submit_capture, prepare_void, submit_void, release,
-    /// prepare_approve, submit_approve, prepare_refund, submit_refund.
+    /// Merchant configuration operations: `payment_methods`.
+    pub merchants: MerchantsClient,
+    /// Payment lifecycle operations: `get`, `create_payment`, `sign`, `authorize`,
+    /// `submit_authorize`, `charge`, `prepare_capture`, `submit_capture`, `prepare_void`,
+    /// `submit_void`, `prepare_release`, `submit_release`, `prepare_approve`,
+    /// `submit_approve`, `prepare_refund`, `submit_refund`.
     pub payments: PaymentsClient,
 }
 
@@ -25,6 +29,7 @@ impl Rail0Client {
     pub fn new(opts: ClientOptions) -> Self {
         let http = Arc::new(HttpClient::new(opts));
         Self {
+            merchants: MerchantsClient::new(Arc::clone(&http)),
             payments: PaymentsClient::new(Arc::clone(&http)),
         }
     }

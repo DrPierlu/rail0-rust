@@ -243,3 +243,65 @@ pub struct ApiError {
     pub code: String,
     pub message: String,
 }
+
+/// Optional request body for [`PaymentsClient::prepare_release`].
+/// Pass `caller_address` to build the unsigned tx for the buyer (payer).
+#[derive(Debug, Clone, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub caller_address: Option<Address>,
+}
+
+/// Request body for [`PaymentsClient::submit_approve`].
+/// Include `amount` so the API records it in the transaction log.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmitApproveRequest {
+    pub signed_transaction: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amount: Option<Uint256String>,
+}
+
+/// Live on-chain escrow balances for a payment.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnChainState {
+    pub exists: bool,
+    pub capturable_amount: Uint256String,
+    pub refundable_amount: Uint256String,
+}
+
+/// Returned by [`PaymentsClient::get`]. Combines DB status with live on-chain balances.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaymentResponse {
+    pub payment_id: Bytes32,
+    pub status: String,
+    pub mode: String,
+    pub amount: Uint256String,
+    pub payer: Address,
+    pub payee: Address,
+    pub token: Address,
+    pub chain_id: i64,
+    pub authorization_expiry: i64,
+    pub refund_expiry: i64,
+    pub on_chain: Option<OnChainState>,
+}
+
+/// A single accepted payment method for a merchant (chain + token + wallet combination).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaymentMethod {
+    pub id: u32,
+    pub token_id: u32,
+    pub chain_id: u32,
+    pub chain_name: String,
+    pub chain_slug: String,
+    pub explorer_url: String,
+    pub token_address: Address,
+    pub token_symbol: String,
+    pub token_decimals: u32,
+    pub wallet_address: Address,
+    pub is_default: bool,
+}

@@ -36,7 +36,7 @@ async fn main() {
         payer:               "0xBuyer...".into(),
         payee:               "0xMerchant...".into(),
         token:               "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913".into(), // USDC on Base
-        max_amount:          "100000000".into(),        // 100 USDC (6 decimals)
+        amount:              "100000000".into(),        // 100 USDC (6 decimals)
         authorization_expiry: now + 3600 * 24,          // 24 h to capture
         refund_expiry:        now + 3600 * 24 * 7,      // 7-day refund window
         fee_bps:              0,
@@ -331,7 +331,7 @@ Common error codes:
 | `AuthorizationExpired` | `authorization_expiry` is in the past (capture) |
 | `AuthorizationNotExpired` | `authorization_expiry` has not passed yet (release) |
 | `RefundExpired` | `refund_expiry` is in the past |
-| `InvalidAmount` | `amount` is 0 or exceeds `max_amount` |
+| `InvalidAmount` | `amount` is 0 |
 | `TokenNotAccepted` | token is not in this deployment's allowlist |
 | `NotPayee` | caller is not `payment.payee` |
 
@@ -356,8 +356,8 @@ cargo run --example 03_refund
 ### Regenerate types after an API change
 
 ```bash
-# 1. Drop the updated spec into gen/
-cp path/to/new-openapi.json gen/openapi.json
+# 1. Update the schema in rail0-api (sibling repo),
+#    or set RAIL0_SCHEMA_PATH to point to a local file.
 
 # 2. Regenerate src/types_gen.rs
 cargo run --bin generate
@@ -371,9 +371,8 @@ cargo build
 ## Project structure
 
 ```text
-gen/              OpenAPI spec + generation pipeline
-  openapi.json    source of truth for the API surface
-  generate.rs     generates src/types_gen.rs from the spec
+gen/              Generation pipeline (schema from rail0-api)
+  generate.rs     generates src/types_gen.rs from the schema
   README.md
 
 tests/            test suite
