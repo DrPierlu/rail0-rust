@@ -20,7 +20,7 @@ tokio = { version = "1", features = ["full"] }
 ## Quick start
 
 ```rust
-use rail0::{Rail0Client, ClientOptions, CreatePaymentRequest, PaymentConfig,
+use rail0::{Rail0Client, ClientOptions, CreatePaymentRequest, PaymentInput,
             PayerSignatureRequest, SubmitTransactionRequest};
 
 #[tokio::main]
@@ -36,13 +36,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 2 — create payment intent
     let resp = client.payments.create_payment(&CreatePaymentRequest {
-        payment: PaymentConfig {
+        payment: PaymentInput {
             payer: "0xBuyer...".into(),
             payee: usdc.wallet_address.clone(),
             token: usdc.token_address.clone(),
+            amount: "50000000".into(), // 50 USDC (6 decimals)
             ..Default::default()
         },
-        amount: "50000000".into(), // 50 USDC (6 decimals)
         chain_id: usdc.chain_id as i64,
         mode: "authorize".into(),
     }).await?;
@@ -52,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let sig = rail0::sign_authorize(&rail0::SignPaymentParams {
         private_key:      key,
         payment:          resp.payment.clone(),
-        amount:           resp.amount.parse()?,
+        amount:           resp.payment.amount.parse()?,
         nonce:            resp.signing_payload.message.nonce.clone(),
         contract_address: resp.rail0_contract.clone(),
         token_domain: rail0::TokenDomain {
@@ -63,21 +63,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         valid_after: None, valid_before: None,
     })?;
 
-    // Step 4 — submit payer signature
-    client.payments.sign(&resp.payment_id, &PayerSignatureRequest {
-        v: sig.v, r: sig.r, s: sig.s,
+    // Step 4 — submit payer signature (single 65-byte hex string)
+    client.payments.sign(&resp.rail0_id, &PayerSignatureRequest {
+        signature: sig.to_hex(), // "0x" + 130 hex chars
     }).await?;
 
     // Step 5 — payee prepares the unsigned authorize tx
-    let tx = client.payments.authorize(&resp.payment_id).await?;
+    let tx = client.payments.authorize(&resp.rail0_id).await?;
     // sign tx.unsigned_transaction with payee's EIP-1559 key
 
     // Step 6 — broadcast signed authorize tx
-    client.payments.submit_authorize(&resp.payment_id, &SubmitTransactionRequest {
+    client.payments.submit(&resp.rail0_id, &SubmitTransactionRequest {
         signed_transaction: signed_bytes,
     }).await?;
 
-    println!("authorized: {}", resp.payment_id);
+    println!("authorized: {}", resp.rail0_id);
     Ok(())
 }
 ```
@@ -94,13 +94,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 | Operation | Caller | What it does |
 |-----------|--------|--------------|
-| `authorize` + `submit_authorize` | payee | Prepare + broadcast the authorize tx; funds move to escrow |
+| `authorize` + `submit` | payee | Prepare + broadcast the authorize tx; funds move to escrow |
 | `charge` | payee | Server-side one-shot: authorize + capture with no escrow window |
-| `prepare_capture` + `submit_capture` | payee | Moves escrowed funds to the merchant |
-| `prepare_void` + `submit_void` | payee | Cancels the hold, returns funds to the payer |
-| `prepare_release` + `submit_release` | anyone | Reclaims escrow after `authorization_expiry` |
-| `prepare_approve` + `submit_approve` | payee | ERC-20 `approve()` required before a refund |
-| `prepare_refund` + `submit_refund` | payee | Returns captured funds to the payer |
+| `prepare_capture` + `submit` | payee | Moves escrowed funds to the merchant |
+| `prepare_void` + `submit` | payee | Cancels the hold, returns funds to the payer |
+| `prepare_release` + `submit` | anyone | Reclaims escrow after `authorization_expiry` |
+| `prepare_approve` + `submit` | payee | ERC-20 `approve()` required before a refund |
+| `prepare_refund` + `submit` | payee | Returns captured funds to the payer |
 
 ## API reference
 
@@ -186,19 +186,19 @@ Creates a payment intent. Returns `signing_payload` for the payer to sign, plus 
 
 #### `.sign(payment_id, params)` → `PayerSignatureResponse`
 
-Submits the payer's EIP-712 signature (v, r, s).
+Submits the payer's EIP-712 signature as a single 65-byte hex string.
 
 #### `.authorize(payment_id)` → `PrepareTransactionResponse`
 
-Prepares the unsigned `authorize()` transaction. Called by the payee. Sign `unsigned_transaction` with the payee's key and pass to `submit_authorize`.
+Prepares the unsigned `authorize()` transaction. Called by the payee. Sign `unsigned_transaction` with the payee's key and pass to `submit`.
 
-#### `.submit_authorize(payment_id, params)` → `AuthorizePaymentResponse`
+#### `.submit(payment_id, params)` → `AuthorizePaymentResponse`
 
 Broadcasts the signed authorize transaction. Funds are moved to escrow.
 
 ```rust
 let tx = client.payments.authorize(&payment_id).await?;
-let res = client.payments.submit_authorize(&payment_id, &SubmitTransactionRequest {
+let res = client.payments.submit(&payment_id, &SubmitTransactionRequest {
     signed_transaction: signed_bytes,
 }).await?;
 // res.transaction_hash, res.capturable_amount
@@ -208,7 +208,7 @@ let res = client.payments.submit_authorize(&payment_id, &SubmitTransactionReques
 
 Server-side one-shot: authorize + capture in a single transaction. No `submit` step. Called by the payee.
 
-#### `.prepare_capture(payment_id, params)` / `.submit_capture(payment_id, params)`
+#### `.prepare_capture(payment_id, params)` / `.submit(payment_id, params)`
 
 Build and broadcast the capture transaction. Partial captures are supported.
 
@@ -216,17 +216,17 @@ Build and broadcast the capture transaction. Partial captures are supported.
 let tx = client.payments.prepare_capture(&payment_id, &CapturePaymentRequest {
     amount: "50000000".into(),
 }).await?;
-let res = client.payments.submit_capture(&payment_id, &SubmitTransactionRequest {
+let res = client.payments.submit(&payment_id, &SubmitTransactionRequest {
     signed_transaction: signed,
 }).await?;
 // res.captured_amount, res.capturable_amount, res.refundable_amount
 ```
 
-#### `.prepare_void(payment_id)` / `.submit_void(payment_id, params)`
+#### `.prepare_void(payment_id)` / `.submit(payment_id, params)`
 
 Void the authorization — releases all escrowed funds to the payer.
 
-#### `.prepare_release(payment_id, params)` / `.submit_release(payment_id, params)`
+#### `.prepare_release(payment_id, params)` / `.submit(payment_id, params)`
 
 Release escrowed funds after `authorization_expiry`. Set `caller_address` in `ReleaseRequest` for buyer-initiated release.
 
@@ -234,12 +234,12 @@ Release escrowed funds after `authorization_expiry`. Set `caller_address` in `Re
 let tx = client.payments.prepare_release(&payment_id, &ReleaseRequest {
     caller_address: Some(buyer_address),
 }).await?;
-client.payments.submit_release(&payment_id, &SubmitTransactionRequest {
+client.payments.submit(&payment_id, &SubmitTransactionRequest {
     signed_transaction: buyer_signed,
 }).await?;
 ```
 
-#### `.prepare_approve(payment_id, params)` / `.submit_approve(payment_id, params)`
+#### `.prepare_approve(payment_id, params)` / `.submit(payment_id, params)`
 
 ERC-20 `approve()` before a refund. Include `amount` in `SubmitApproveRequest` so the API records it.
 
@@ -247,13 +247,13 @@ ERC-20 `approve()` before a refund. Include `amount` in `SubmitApproveRequest` s
 let tx = client.payments.prepare_approve(&payment_id, &ApproveRequest {
     amount: "50000000".into(),
 }).await?;
-client.payments.submit_approve(&payment_id, &SubmitApproveRequest {
+client.payments.submit(&payment_id, &SubmitApproveRequest {
     signed_transaction: signed,
     amount: Some("50000000".into()),
 }).await?;
 ```
 
-#### `.prepare_refund(payment_id, params)` / `.submit_refund(payment_id, params)`
+#### `.prepare_refund(payment_id, params)` / `.submit(payment_id, params)`
 
 Build and broadcast the refund transaction. Partial refunds are supported.
 
@@ -268,7 +268,7 @@ let key = rail0::hex_to_private_key("0xYourPrivateKey...")?;
 let sig = rail0::sign_authorize(&rail0::SignPaymentParams {
     private_key:      key,
     payment:          resp.payment.clone(),
-    amount:           resp.amount.parse()?,
+    amount:           resp.payment.amount.parse()?,
     nonce:            resp.signing_payload.message.nonce.clone(),
     contract_address: resp.rail0_contract.clone(),
     token_domain: rail0::TokenDomain {
@@ -277,7 +277,7 @@ let sig = rail0::sign_authorize(&rail0::SignPaymentParams {
     },
     valid_after: None, valid_before: None,
 })?;
-// sig.v, sig.r, sig.s — pass to sign()
+// sig.to_hex() → "0x..." (65-byte hex) — pass to sign()
 ```
 
 Use `sign_charge` instead of `sign_authorize` when `mode: "charge"`.
@@ -305,7 +305,7 @@ Every non-2xx response is returned as `Rail0Error::Api`:
 ```rust
 use rail0::Rail0Error;
 
-match client.payments.submit_capture(&payment_id, &params).await {
+match client.payments.submit(&payment_id, &params).await {
     Err(Rail0Error::Api { status, code, message }) => {
         eprintln!("HTTP {status}: [{code}] {message}");
     }
