@@ -3,11 +3,11 @@ use std::sync::Arc;
 use crate::error::Rail0Error;
 use crate::http::HttpClient;
 use crate::types::{
-    ApproveRequest, ApproveResponse, AuthorizePaymentResponse, CapturePaymentRequest,
-    CapturePaymentResponse, ChargePaymentResponse, CreatePaymentRequest, CreatePaymentResponse,
-    PayerSignatureRequest, PayerSignatureResponse, PaymentResponse, PrepareTransactionResponse,
-    RefundPaymentRequest, RefundPaymentResponse, ReleasePaymentResponse, ReleaseRequest,
-    SubmitApproveRequest, SubmitTransactionRequest, VoidPaymentResponse,
+    AuthorizePaymentResponse, CapturePaymentRequest, CapturePaymentResponse,
+    ChargePaymentResponse, CreatePaymentRequest, CreatePaymentResponse, PayerSignatureRequest,
+    PayerSignatureResponse, PaymentResponse, PrepareTransactionResponse, RefundPayloadRequest,
+    RefundPaymentResponse, ReleasePaymentResponse, ReleaseRequest, SubmitTransactionRequest,
+    VoidPaymentResponse,
 };
 
 /// Payment lifecycle operations.
@@ -20,12 +20,17 @@ impl PaymentsClient {
         Self { http }
     }
 
+    /// List payments for the authenticated account.
+    pub async fn list(&self) -> Result<Vec<PaymentResponse>, Rail0Error> {
+        self.http.get("/payments").await
+    }
+
     /// Fetch current payment state (DB status + live on-chain escrow balances).
     pub async fn get(&self, payment_id: &str) -> Result<PaymentResponse, Rail0Error> {
         self.http.get(&format!("/payments/{payment_id}")).await
     }
 
-    /// Create a payment intent. Returns the EIP-712 `signingPayload` for the payer to sign.
+    /// Create a payment intent. Returns the EIP-712 `signing_payload` for the payer to sign.
     pub async fn create_payment(
         &self,
         params: &CreatePaymentRequest,
@@ -45,145 +50,144 @@ impl PaymentsClient {
     }
 
     /// Prepare the unsigned `authorize()` transaction. Called by the payee.
-    pub async fn authorize(
+    /// Sign `unsigned_transaction` with the payee's key and pass to [`authorize`](Self::authorize).
+    pub async fn authorize_payload(
         &self,
         payment_id: &str,
     ) -> Result<PrepareTransactionResponse, Rail0Error> {
         self.http
-            .post(&format!("/payments/{payment_id}/authorize"), &())
+            .post(&format!("/payments/{payment_id}/authorize/payload"), &())
             .await
     }
 
-    /// Broadcast a signed authorize transaction. Called by the payee.
-    pub async fn submit_authorize(
+    /// Broadcast a signed authorize transaction (HTTP 202, async). Called by the payee.
+    /// Poll [`get`](Self::get) until status leaves `"submitting"`.
+    pub async fn authorize(
         &self,
         payment_id: &str,
         params: &SubmitTransactionRequest,
     ) -> Result<AuthorizePaymentResponse, Rail0Error> {
         self.http
-            .post(&format!("/payments/{payment_id}/authorize/submit"), params)
+            .post(&format!("/payments/{payment_id}/authorize"), params)
             .await
     }
 
-    /// Relay the stored EIP-3009 signature to the RAIL0 `charge()` function (one-shot). Called by the payee.
+    /// Prepare the unsigned `charge()` transaction (one-shot, no escrow). Called by the payee.
+    /// The payer signature must have been submitted first via [`sign`](Self::sign).
+    pub async fn charge_payload(
+        &self,
+        payment_id: &str,
+    ) -> Result<PrepareTransactionResponse, Rail0Error> {
+        self.http
+            .post(&format!("/payments/{payment_id}/charge/payload"), &())
+            .await
+    }
+
+    /// Broadcast a signed charge transaction (HTTP 202, async). Called by the payee.
     pub async fn charge(
         &self,
         payment_id: &str,
+        params: &SubmitTransactionRequest,
     ) -> Result<ChargePaymentResponse, Rail0Error> {
         self.http
-            .post(&format!("/payments/{payment_id}/charge"), &())
+            .post(&format!("/payments/{payment_id}/charge"), params)
             .await
     }
 
     /// Build the unsigned `capture()` transaction. Called by the payee.
-    pub async fn prepare_capture(
+    pub async fn capture_payload(
         &self,
         payment_id: &str,
         params: &CapturePaymentRequest,
     ) -> Result<PrepareTransactionResponse, Rail0Error> {
         self.http
-            .post(&format!("/payments/{payment_id}/capture"), params)
+            .post(&format!("/payments/{payment_id}/capture/payload"), params)
             .await
     }
 
-    /// Broadcast a signed capture transaction. Called by the payee.
-    pub async fn submit_capture(
+    /// Broadcast a signed capture transaction (HTTP 202, async). Called by the payee.
+    pub async fn capture(
         &self,
         payment_id: &str,
         params: &SubmitTransactionRequest,
     ) -> Result<CapturePaymentResponse, Rail0Error> {
         self.http
-            .post(&format!("/payments/{payment_id}/capture/submit"), params)
+            .post(&format!("/payments/{payment_id}/capture"), params)
             .await
     }
 
     /// Build the unsigned `void()` transaction. Called by the payee.
-    pub async fn prepare_void(
+    pub async fn void_payload(
         &self,
         payment_id: &str,
     ) -> Result<PrepareTransactionResponse, Rail0Error> {
         self.http
-            .post(&format!("/payments/{payment_id}/void"), &())
+            .post(&format!("/payments/{payment_id}/void/payload"), &())
             .await
     }
 
-    /// Broadcast a signed void transaction. Called by the payee.
-    pub async fn submit_void(
+    /// Broadcast a signed void transaction (HTTP 202, async). Called by the payee.
+    pub async fn void(
         &self,
         payment_id: &str,
         params: &SubmitTransactionRequest,
     ) -> Result<VoidPaymentResponse, Rail0Error> {
         self.http
-            .post(&format!("/payments/{payment_id}/void/submit"), params)
+            .post(&format!("/payments/{payment_id}/void"), params)
             .await
     }
 
     /// Build the unsigned `release()` transaction.
-    /// Pass `ReleaseRequest { caller_address: Some(buyer_addr) }` to build the tx for the buyer.
+    /// Set `caller_address` in [`ReleaseRequest`] to build the tx for the buyer (payer).
     /// `release()` can only succeed after `authorization_expiry` has passed on-chain.
-    pub async fn prepare_release(
+    pub async fn release_payload(
         &self,
         payment_id: &str,
         params: &ReleaseRequest,
     ) -> Result<PrepareTransactionResponse, Rail0Error> {
         self.http
-            .post(&format!("/payments/{payment_id}/release"), params)
+            .post(&format!("/payments/{payment_id}/release/payload"), params)
             .await
     }
 
-    /// Broadcast a signed release transaction.
-    pub async fn submit_release(
+    /// Broadcast a signed release transaction (HTTP 202, async).
+    pub async fn release(
         &self,
         payment_id: &str,
         params: &SubmitTransactionRequest,
     ) -> Result<ReleasePaymentResponse, Rail0Error> {
         self.http
-            .post(&format!("/payments/{payment_id}/release/submit"), params)
+            .post(&format!("/payments/{payment_id}/release"), params)
             .await
     }
 
-    /// Build the unsigned ERC-20 `approve()` transaction needed before a refund. Called by the payee.
-    pub async fn prepare_approve(
+    /// Refund payload — two-phase EIP-3009 `receiveWithAuthorization` flow. Called by the payee.
+    ///
+    /// **Phase 1** — set only `amount` in [`RefundPayloadRequest`]:
+    /// Returns the EIP-3009 signing payload. Sign it off-chain to obtain `v`, `r`, `s`.
+    ///
+    /// **Phase 2** — set `amount` plus `v`, `r`, `s`:
+    /// Returns the unsigned on-chain refund transaction ready to sign and submit.
+    ///
+    /// No ERC-20 `approve()` step is required — uses EIP-3009.
+    pub async fn refund_payload(
         &self,
         payment_id: &str,
-        params: &ApproveRequest,
+        params: &RefundPayloadRequest,
     ) -> Result<PrepareTransactionResponse, Rail0Error> {
         self.http
-            .post(&format!("/payments/{payment_id}/approve"), params)
+            .post(&format!("/payments/{payment_id}/refund/payload"), params)
             .await
     }
 
-    /// Broadcast a signed ERC-20 approve transaction. Called by the payee.
-    /// Set `amount` in `params` so the API records the approved amount in the transaction log.
-    pub async fn submit_approve(
-        &self,
-        payment_id: &str,
-        params: &SubmitApproveRequest,
-    ) -> Result<ApproveResponse, Rail0Error> {
-        self.http
-            .post(&format!("/payments/{payment_id}/approve/submit"), params)
-            .await
-    }
-
-    /// Build the unsigned `refund()` transaction. Called by the payee.
-    pub async fn prepare_refund(
-        &self,
-        payment_id: &str,
-        params: &RefundPaymentRequest,
-    ) -> Result<PrepareTransactionResponse, Rail0Error> {
-        self.http
-            .post(&format!("/payments/{payment_id}/refund"), params)
-            .await
-    }
-
-    /// Broadcast a signed refund transaction. Called by the payee.
-    pub async fn submit_refund(
+    /// Broadcast a signed refund transaction (HTTP 202, async). Called by the payee.
+    pub async fn refund(
         &self,
         payment_id: &str,
         params: &SubmitTransactionRequest,
     ) -> Result<RefundPaymentResponse, Rail0Error> {
         self.http
-            .post(&format!("/payments/{payment_id}/refund/submit"), params)
+            .post(&format!("/payments/{payment_id}/refund"), params)
             .await
     }
 }

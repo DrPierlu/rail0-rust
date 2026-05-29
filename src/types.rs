@@ -119,10 +119,19 @@ pub struct ApproveRequest {
     pub amount: Uint256String,
 }
 
-/// Request body for [`payments.prepare_refund`](crate::PaymentsClient::prepare_refund).
+/// Request body for [`PaymentsClient::refund_payload`].
+///
+/// Phase 1 — set only `amount`: returns the EIP-3009 signing payload.
+/// Phase 2 — set `amount` plus `v`, `r`, `s`: returns the unsigned on-chain refund transaction.
 #[derive(Debug, Clone, Serialize)]
-pub struct RefundPaymentRequest {
+pub struct RefundPayloadRequest {
     pub amount: Uint256String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub v: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub r: Option<Bytes32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub s: Option<Bytes32>,
 }
 
 // ================================================================
