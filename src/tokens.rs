@@ -1,0 +1,32 @@
+use std::sync::Arc;
+use serde::{Deserialize, Serialize};
+use crate::error::Rail0Error;
+use crate::http::HttpClient;
+
+/// An active ERC-20 token on a supported blockchain.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Token {
+    pub chain_id: u64,
+    pub chain_slug: String,
+    pub symbol: String,
+    pub address: String,
+    pub decimals: u8,
+}
+
+pub struct TokensClient {
+    http: Arc<HttpClient>,
+}
+
+impl TokensClient {
+    pub(crate) fn new(http: Arc<HttpClient>) -> Self { Self { http } }
+
+    /// List active tokens. Pass `chain_id = 0` to retrieve all chains.
+    pub async fn list(&self, chain_id: u64) -> Result<Vec<Token>, Rail0Error> {
+        let path = if chain_id != 0 {
+            format!("/tokens?chain_id={chain_id}")
+        } else {
+            "/tokens".to_owned()
+        };
+        self.http.get(&path).await
+    }
+}

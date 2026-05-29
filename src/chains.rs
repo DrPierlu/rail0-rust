@@ -1,0 +1,27 @@
+use std::sync::Arc;
+use serde::{Deserialize, Serialize};
+use crate::error::Rail0Error;
+use crate::http::HttpClient;
+
+/// An active blockchain supported by RAIL0.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Blockchain {
+    pub chain_id: u64,
+    pub name: String,
+    pub slug: String,
+    pub network_type: String,
+    pub explorer_url: String,
+}
+
+pub struct ChainsClient {
+    http: Arc<HttpClient>,
+}
+
+impl ChainsClient {
+    pub(crate) fn new(http: Arc<HttpClient>) -> Self { Self { http } }
+
+    /// List all active blockchains supported by RAIL0.
+    pub async fn list(&self) -> Result<Vec<Blockchain>, Rail0Error> {
+        self.http.get("/blockchains").await
+    }
+}
