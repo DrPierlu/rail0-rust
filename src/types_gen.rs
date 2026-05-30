@@ -5,27 +5,6 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Amount to approve on the token contract. Setting this to the maximum expected refund (or `type(uint256).max` for unlimited) avoids repeated approvals.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ApproveRequestGen {
-    /// Allowance to grant the RAIL0 contract (in token base units). Use '115792089237316195423570985008687907853269984665640564039457584007913129639935' for unlimited approval.
-    pub amount: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ApproveResponseGen {
-    /// Approved allowance amount.
-    pub amount: String,
-    /// RAIL0 contract address that was approved as spender.
-    pub spender: String,
-    /// Token contract on which the approval was set.
-    pub token: String,
-    /// On-chain transaction hash of the `approve()` call.
-    pub transaction_hash: String,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthorizePaymentResponseGen {
