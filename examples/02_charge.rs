@@ -17,7 +17,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rail0::{
     ClientOptions, CreatePaymentRequest, PayerSignatureRequest, PaymentConfig, Rail0Client,
-    Rail0Error,
+    Rail0Error, SubmitTransactionRequest,
 };
 
 #[tokio::main]
@@ -94,12 +94,31 @@ async fn main() {
         .unwrap_or_else(|e| panic!("sign: {e}"));
 
     // ----------------------------------------------------------------
-    // Step 3 — Payee triggers the one-shot charge
+    // Step 3 — Payee gets the unsigned charge transaction, signs and submits
     // ----------------------------------------------------------------
+
+    let prep_charge = client
+        .payments
+        .charge_payload(&create_resp.payment_id)
+        .await
+        .unwrap_or_else(|e| panic!("charge_payload: {e}"));
+
+    println!(
+        "Unsigned charge tx (chain {}): {}",
+        prep_charge.chain_id,
+        &prep_charge.unsigned_transaction[..20]
+    );
+
+    // Payee signs prep_charge.unsigned_transaction offline, then submits:
+    //   let signed_tx = payee_wallet.sign_transaction(&prep_charge.unsigned_transaction);
+    let signed_tx = "0x02f8..."; // placeholder
 
     let tx = client
         .payments
-        .charge(&create_resp.payment_id)
+        .charge(
+            &create_resp.payment_id,
+            &SubmitTransactionRequest { signed_transaction: signed_tx.into() },
+        )
         .await
         .unwrap_or_else(|e| {
             if let Rail0Error::Api { code, message, .. } = &e {

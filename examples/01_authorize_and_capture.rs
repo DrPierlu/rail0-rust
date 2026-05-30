@@ -1,8 +1,9 @@
 // Standard two-step payment flow: authorize → capture
 //
 // The payer creates a payment intent, signs the EIP-712 payload, and
-// submits the signature. The payee then calls authorize (funds move to
-// escrow), prepares a capture transaction, signs it offline, and submits it.
+// submits the signature. The payee then calls authorize_payload (get the
+// unsigned tx), signs it offline, and submits with authorize. Then
+// capture_payload + capture to move funds from escrow to payee.
 //
 // On-chain flow:
 //
@@ -99,14 +100,20 @@ async fn main() {
     println!("Signature status: {}", sig_resp.status);
 
     // ----------------------------------------------------------------
-    // Step 3 — Payee authorizes (relays the stored signature on-chain)
+    // Step 3 — Payee gets the unsigned authorize transaction, signs and submits
     // ----------------------------------------------------------------
 
     let prep_authorize = client
         .payments
-        .authorize(&create_resp.payment_id)
+        .authorize_payload(&create_resp.payment_id)
         .await
-        .unwrap_or_else(|e| panic!("authorize: {e}"));
+        .unwrap_or_else(|e| panic!("authorize_payload: {e}"));
+
+    println!(
+        "Unsigned authorize tx (chain {}): {}",
+        prep_authorize.chain_id,
+        &prep_authorize.unsigned_transaction[..20]
+    );
 
     // Payee signs prep_authorize.unsigned_transaction offline, then submits:
     //   let signed_auth_tx = payee_wallet.sign_transaction(&prep_authorize.unsigned_transaction);
@@ -114,15 +121,17 @@ async fn main() {
 
     let auth_resp = client
         .payments
-        .submit_authorize(
+        .authorize(
             &create_resp.payment_id,
             &SubmitTransactionRequest { signed_transaction: signed_auth_tx.into() },
         )
         .await
-        .unwrap_or_else(|e| panic!("submit_authorize: {e}"));
+        .unwrap_or_else(|e| panic!("authorize: {e}"));
 
-    println!("Authorized: tx={} capturable={}", auth_resp.transaction_hash, auth_resp.capturable_amount);
-    let _ = prep_authorize;
+    println!(
+        "Authorized: tx={} capturable={}",
+        auth_resp.transaction_hash, auth_resp.capturable_amount
+    );
 
     // ----------------------------------------------------------------
     // Step 4a — Payee prepares and submits a capture transaction
@@ -130,12 +139,12 @@ async fn main() {
 
     let prep_capture = client
         .payments
-        .prepare_capture(
+        .capture_payload(
             &create_resp.payment_id,
             &CapturePaymentRequest { amount: "50000000".into() },
         )
         .await
-        .unwrap_or_else(|e| panic!("prepare_capture: {e}"));
+        .unwrap_or_else(|e| panic!("capture_payload: {e}"));
 
     // Payee signs prep_capture.unsigned_transaction offline, then submits:
     //   let signed_tx = payee_wallet.sign_transaction(&prep_capture.unsigned_transaction);
@@ -143,27 +152,35 @@ async fn main() {
 
     let capture_resp = client
         .payments
-        .submit_capture(
+        .capture(
             &create_resp.payment_id,
             &SubmitTransactionRequest { signed_transaction: signed_tx.into() },
         )
         .await
-        .unwrap_or_else(|e| panic!("submit_capture: {e}"));
+        .unwrap_or_else(|e| panic!("capture: {e}"));
 
-    println!("Captured: tx={} captured={}", capture_resp.transaction_hash, capture_resp.captured_amount);
+    println!(
+        "Captured: tx={} captured={}",
+        capture_resp.transaction_hash, capture_resp.captured_amount
+    );
     let _ = prep_capture;
 
     // ----------------------------------------------------------------
     // Step 4b — Alternatively: payee voids (order cancelled)
     // ----------------------------------------------------------------
 
-    // let prep_void = client.payments.prepare_void(&create_resp.payment_id).await?;
+    // let prep_void = client.payments.void_payload(&create_resp.payment_id).await?;
     // let signed_void = payee_wallet.sign_transaction(&prep_void.unsigned_transaction);
-    // client.payments.submit_void(&create_resp.payment_id, &SubmitTransactionRequest { signed_transaction: signed_void }).await?;
+    // client.payments.void(&create_resp.payment_id,
+    //     &SubmitTransactionRequest { signed_transaction: signed_void }).await?;
 
     // ----------------------------------------------------------------
     // Step 4c — Release (fallback after authorization_expiry, permissionless)
     // ----------------------------------------------------------------
 
-    // let release_resp = client.payments.release(&create_resp.payment_id).await?;
+    // let prep_release = client.payments.release_payload(&create_resp.payment_id,
+    //     &rail0::ReleaseRequest::default()).await?;
+    // let signed_release = payer_wallet.sign_transaction(&prep_release.unsigned_transaction);
+    // client.payments.release(&create_resp.payment_id,
+    //     &SubmitTransactionRequest { signed_transaction: signed_release }).await?;
 }

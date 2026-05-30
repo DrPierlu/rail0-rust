@@ -100,7 +100,7 @@ pub struct PayerSignatureRequest {
     pub s: Bytes32,
 }
 
-/// Request body for [`payments.prepare_capture`](crate::PaymentsClient::prepare_capture).
+/// Request body for [`PaymentsClient::capture_payload`].
 #[derive(Debug, Clone, Serialize)]
 pub struct CapturePaymentRequest {
     pub amount: Uint256String,
@@ -111,12 +111,6 @@ pub struct CapturePaymentRequest {
 #[serde(rename_all = "camelCase")]
 pub struct SubmitTransactionRequest {
     pub signed_transaction: String,
-}
-
-/// Request body for [`payments.prepare_approve`](crate::PaymentsClient::prepare_approve).
-#[derive(Debug, Clone, Serialize)]
-pub struct ApproveRequest {
-    pub amount: Uint256String,
 }
 
 /// Request body for [`PaymentsClient::refund_payload`].
@@ -195,7 +189,7 @@ pub struct PrepareTransactionResponse {
     pub gas_limit: Uint256String,
 }
 
-/// Returned by [`payments.submit_capture`](crate::PaymentsClient::submit_capture).
+/// Returned by [`PaymentsClient::capture`].
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CapturePaymentResponse {
@@ -208,7 +202,7 @@ pub struct CapturePaymentResponse {
     pub authorization_expiry: Option<i64>,
 }
 
-/// Returned by [`payments.submit_void`](crate::PaymentsClient::submit_void).
+/// Returned by [`PaymentsClient::void`].
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VoidPaymentResponse {
@@ -226,17 +220,7 @@ pub struct ReleasePaymentResponse {
     pub released_amount: Uint256String,
 }
 
-/// Returned by [`payments.submit_approve`](crate::PaymentsClient::submit_approve).
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ApproveResponse {
-    pub transaction_hash: Bytes32,
-    pub token: Address,
-    pub spender: Address,
-    pub amount: Uint256String,
-}
-
-/// Returned by [`payments.submit_refund`](crate::PaymentsClient::submit_refund).
+/// Returned by [`PaymentsClient::refund`].
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RefundPaymentResponse {
@@ -253,23 +237,13 @@ pub struct ApiError {
     pub message: String,
 }
 
-/// Optional request body for [`PaymentsClient::prepare_release`].
+/// Optional request body for [`PaymentsClient::release_payload`].
 /// Pass `caller_address` to build the unsigned tx for the buyer (payer).
 #[derive(Debug, Clone, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ReleaseRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub caller_address: Option<Address>,
-}
-
-/// Request body for [`PaymentsClient::submit_approve`].
-/// Include `amount` so the API records it in the transaction log.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SubmitApproveRequest {
-    pub signed_transaction: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub amount: Option<Uint256String>,
 }
 
 /// Live on-chain escrow balances for a payment.

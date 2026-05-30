@@ -1,23 +1,26 @@
-// Refund flow
+// Refund flow — EIP-3009 receiveWithAuthorization
 //
 // After a capture (or charge) the merchant can refund up to the full
 // captured amount back to the payer, as long as refund_expiry has not
-// passed. The payee must first approve the RAIL0 contract as a spender
-// on the token (so the contract can pull funds back from the payee).
+// passed.
+//
+// Uses EIP-3009 receiveWithAuthorization — no ERC-20 approve() step needed.
+// The refund_payload endpoint is a two-phase flow:
+//
+//   Phase 1 — send only `amount` → returns a signing_payload (EIP-3009).
+//             Sign it off-chain to get v, r, s.
+//   Phase 2 — send `amount` + v, r, s → returns the unsigned refund tx.
+//             Sign and submit via refund().
 //
 // On-chain flow:
 //
-//   payee signs approve tx → approve()  RAIL0 contract approved as spender
-//   payee signs refund tx  → refund()   funds move payee → payer
+//   payee signs EIP-3009   → refund()   funds move payee → payer
 //
 // Run:
 //
 //   cargo run --example 03_refund
 
-use rail0::{
-    ApproveRequest, ClientOptions, Rail0Client, Rail0Error, RefundPaymentRequest,
-    SubmitApproveRequest, SubmitTransactionRequest,
-};
+use rail0::{ClientOptions, Rail0Client, Rail0Error, RefundPayloadRequest, SubmitTransactionRequest};
 
 #[tokio::main]
 async fn main() {
@@ -30,71 +33,87 @@ async fn main() {
     let payment_id = "0xdeadbeef00000000000000000000000000000000000000000000000000000002";
 
     // ----------------------------------------------------------------
-    // Step 1 — Payee approves the RAIL0 contract as token spender
+    // Phase 1 — Get the EIP-3009 signing payload
     // ----------------------------------------------------------------
 
-    let prep_approve = client
+    let phase1 = client
         .payments
-        .prepare_approve(
+        .refund_payload(
             payment_id,
-            &ApproveRequest {
-                // unlimited approval
-                amount: "115792089237316195423570985008687907853269984665640564039457584007913129639935".into(),
+            &RefundPayloadRequest {
+                amount: "50000000".into(),
+                v: None,
+                r: None,
+                s: None,
             },
         )
         .await
-        .unwrap_or_else(|e| panic!("prepare_approve: {e}"));
+        .unwrap_or_else(|e| panic!("refund_payload phase 1: {e}"));
 
-    // Payee signs prep_approve.unsigned_transaction offline, then submits:
-    //   let signed_approve = payee_wallet.sign_transaction(&prep_approve.unsigned_transaction);
-    let signed_approve = "0x02f8..."; // placeholder
+    println!("Phase 1 — sign this payload off-chain:");
+    println!("  unsigned_transaction: {}", phase1.unsigned_transaction);
 
-    let approve_resp = client
-        .payments
-        .submit_approve(
-            payment_id,
-            &SubmitApproveRequest { signed_transaction: signed_approve.into(), amount: None },
-        )
-        .await
-        .unwrap_or_else(|e| panic!("submit_approve: {e}"));
+    // Payee signs the EIP-3009 payload off-chain to obtain v, r, s:
+    //
+    //   let key = rail0::hex_to_private_key("0xYourPrivateKey").unwrap();
+    //   let sig = rail0::sign_transfer_with_authorization(&rail0::SignTransferParams {
+    //       private_key: key,
+    //       from: "0xPayeeAddress".into(),
+    //       to:   contract_address,
+    //       value: 50_000_000,
+    //       valid_after:  0,
+    //       valid_before: 9_999_999_999,
+    //       nonce: ...,
+    //       token_domain: ...,
+    //   }).unwrap();
 
-    println!("Approved: tx={} spender={}", approve_resp.transaction_hash, approve_resp.spender);
-    let _ = prep_approve;
+    let (v, r, s) = (27u8,
+        "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "0x2222222222222222222222222222222222222222222222222222222222222222");
 
     // ----------------------------------------------------------------
-    // Step 2 — Payee prepares and submits a refund transaction
+    // Phase 2 — Get the unsigned refund transaction
     // ----------------------------------------------------------------
 
-    let prep_refund = client
+    let phase2 = client
         .payments
-        .prepare_refund(
+        .refund_payload(
             payment_id,
-            &RefundPaymentRequest { amount: "50000000".into() },
+            &RefundPayloadRequest {
+                amount: "50000000".into(),
+                v: Some(v),
+                r: Some(r.into()),
+                s: Some(s.into()),
+            },
         )
         .await
-        .unwrap_or_else(|e| panic!("prepare_refund: {e}"));
+        .unwrap_or_else(|e| panic!("refund_payload phase 2: {e}"));
 
-    // Payee signs prep_refund.unsigned_transaction offline, then submits:
-    //   let signed_refund = payee_wallet.sign_transaction(&prep_refund.unsigned_transaction);
+    println!("Phase 2 — unsigned refund tx ready for signing");
+
+    // Payee signs phase2.unsigned_transaction offline, then submits:
+    //   let signed_refund = payee_wallet.sign_transaction(&phase2.unsigned_transaction);
     let signed_refund = "0x02f8..."; // placeholder
 
     let refund_resp = client
         .payments
-        .submit_refund(
+        .refund(
             payment_id,
             &SubmitTransactionRequest { signed_transaction: signed_refund.into() },
         )
         .await
         .unwrap_or_else(|e| {
             if let Rail0Error::Api { code, message, .. } = &e {
-                panic!("SubmitRefund failed [{code}]: {message}");
+                panic!("Refund failed [{code}]: {message}");
             }
-            panic!("submit_refund: {e}");
+            panic!("refund: {e}");
         });
 
     println!(
         "Refunded: tx={} refunded={} remaining={}",
-        refund_resp.transaction_hash, refund_resp.refunded_amount, refund_resp.refundable_amount
+        refund_resp.transaction_hash,
+        refund_resp.refunded_amount,
+        refund_resp.refundable_amount
     );
-    let _ = prep_refund;
+    let _ = phase2;
 }
