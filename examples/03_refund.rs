@@ -5,9 +5,9 @@
 // passed.
 //
 // Uses EIP-3009 receiveWithAuthorization — no ERC-20 approve() step needed.
-// The refund_payload endpoint is a two-phase flow:
+// The refund_prepare endpoint is a two-phase flow:
 //
-//   Phase 1 — send only `amount` → returns a signing_payload (EIP-3009).
+//   Phase 1 — send only `amount` → returns a signing_prepare (EIP-3009).
 //             Sign it off-chain to get v, r, s.
 //   Phase 2 — send `amount` + v, r, s → returns the unsigned refund tx.
 //             Sign and submit via refund().
@@ -38,7 +38,7 @@ async fn main() {
 
     let phase1 = client
         .payments
-        .refund_payload(
+        .refund_prepare(
             payment_id,
             &RefundPayloadRequest {
                 amount: "50000000".into(),
@@ -48,7 +48,7 @@ async fn main() {
             },
         )
         .await
-        .unwrap_or_else(|e| panic!("refund_payload phase 1: {e}"));
+        .unwrap_or_else(|e| panic!("refund_prepare phase 1: {e}"));
 
     println!("Phase 1 — sign this payload off-chain:");
     println!("  unsigned_transaction: {}", phase1.unsigned_transaction);
@@ -77,7 +77,7 @@ async fn main() {
 
     let phase2 = client
         .payments
-        .refund_payload(
+        .refund_prepare(
             payment_id,
             &RefundPayloadRequest {
                 amount: "50000000".into(),
@@ -87,7 +87,7 @@ async fn main() {
             },
         )
         .await
-        .unwrap_or_else(|e| panic!("refund_payload phase 2: {e}"));
+        .unwrap_or_else(|e| panic!("refund_prepare phase 2: {e}"));
 
     println!("Phase 2 — unsigned refund tx ready for signing");
 

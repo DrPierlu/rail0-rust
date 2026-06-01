@@ -100,7 +100,7 @@ pub struct PayerSignatureRequest {
     pub s: Bytes32,
 }
 
-/// Request body for [`PaymentsClient::capture_payload`].
+/// Request body for [`PaymentsClient::capture_prepare`].
 #[derive(Debug, Clone, Serialize)]
 pub struct CapturePaymentRequest {
     pub amount: Uint256String,
@@ -113,7 +113,7 @@ pub struct SubmitTransactionRequest {
     pub signed_transaction: String,
 }
 
-/// Request body for [`PaymentsClient::refund_payload`].
+/// Request body for [`PaymentsClient::refund_prepare`].
 ///
 /// Phase 1 — set only `amount`: returns the EIP-3009 signing payload.
 /// Phase 2 — set `amount` plus `v`, `r`, `s`: returns the unsigned on-chain refund transaction.
@@ -142,7 +142,7 @@ pub struct CreatePaymentResponse {
     pub amount: Uint256String,
     pub chain_id: i64,
     pub rail0_contract: Address,
-    pub signing_payload: SigningPayload,
+    pub signing_prepare: SigningPayload,
 }
 
 /// Returned by [`payments.sign`](crate::PaymentsClient::sign).
@@ -237,7 +237,7 @@ pub struct ApiError {
     pub message: String,
 }
 
-/// Optional request body for [`PaymentsClient::release_payload`].
+/// Optional request body for [`PaymentsClient::release_prepare`].
 /// Pass `caller_address` to build the unsigned tx for the buyer (payer).
 #[derive(Debug, Clone, Serialize, Default)]
 #[serde(rename_all = "camelCase")]

@@ -10,7 +10,7 @@ use crate::signing::keccak256;
 //  Response types
 // ================================================================
 
-/// Response from GET /auth/nonce.
+/// Response from POST /nonces.
 #[derive(Debug, Deserialize)]
 pub struct NonceResponse {
     pub nonce: String,
@@ -48,7 +48,7 @@ impl AuthClient {
 
     /// Fetches a one-time SIWE nonce from the API.
     pub async fn get_nonce(&self) -> Result<NonceResponse, Rail0Error> {
-        self.http.get("/auth/nonce").await
+        self.http.post("/nonces", &serde_json::json!({})).await
     }
 
     /// Submits a signed EIP-4361 message and returns a JWT on success.
@@ -59,7 +59,7 @@ impl AuthClient {
     }
 
     /// Performs the full SIWE authentication flow:
-    /// 1. GET /auth/nonce
+    /// 1. POST /nonces
     /// 2. Build EIP-4361 message
     /// 3. Sign with EIP-191 personal_sign
     /// 4. POST /auth { message, signature }

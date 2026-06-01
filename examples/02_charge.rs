@@ -60,20 +60,20 @@ async fn main() {
 
     println!("Payment ID: {}", create_resp.payment_id);
 
-    // The payer signs create_resp.signing_payload using eth_signTypedData_v4 or sign_charge:
+    // The payer signs create_resp.signing_prepare using eth_signTypedData_v4 or sign_charge:
     //
     //   let key = rail0::hex_to_private_key("0xYourPrivateKey").unwrap();
     //   let sig = rail0::sign_charge(&rail0::SignPaymentParams {
     //       private_key: key,
     //       payment: payment.clone(),
     //       amount: 25_000_000,
-    //       nonce: create_resp.signing_payload.message.nonce.clone(),
+    //       nonce: create_resp.signing_prepare.message.nonce.clone(),
     //       contract_address: create_resp.rail0_contract.clone(),
     //       token_domain: rail0::TokenDomain {
-    //           name: create_resp.signing_payload.domain.name.clone(),
-    //           version: create_resp.signing_payload.domain.version.clone(),
-    //           chain_id: create_resp.signing_payload.domain.chain_id as u64,
-    //           verifying_contract: create_resp.signing_payload.domain.verifying_contract.clone(),
+    //           name: create_resp.signing_prepare.domain.name.clone(),
+    //           version: create_resp.signing_prepare.domain.version.clone(),
+    //           chain_id: create_resp.signing_prepare.domain.chain_id as u64,
+    //           verifying_contract: create_resp.signing_prepare.domain.verifying_contract.clone(),
     //       },
     //       valid_after: None,
     //       valid_before: None,
@@ -99,9 +99,9 @@ async fn main() {
 
     let prep_charge = client
         .payments
-        .charge_payload(&create_resp.payment_id)
+        .charge_prepare(&create_resp.payment_id)
         .await
-        .unwrap_or_else(|e| panic!("charge_payload: {e}"));
+        .unwrap_or_else(|e| panic!("charge_prepare: {e}"));
 
     println!(
         "Unsigned charge tx (chain {}): {}",

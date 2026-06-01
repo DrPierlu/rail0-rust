@@ -28,7 +28,7 @@ fn authorize_body() -> String {
 async fn post_authorize_routes_to_correct_path() {
     let mut server = mockito::Server::new_async().await;
     let mock = server
-        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize/payload").as_str())
+        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize/prepare").as_str())
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(authorize_body())
@@ -37,7 +37,7 @@ async fn post_authorize_routes_to_correct_path() {
 
     let res = make_client(&server.url())
         .payments
-        .authorize_payload(PAYMENT_ID)
+        .authorize_prepare(PAYMENT_ID)
         .await
         .unwrap();
     assert!(!res.unsigned_transaction.is_empty());
@@ -92,7 +92,7 @@ async fn post_create_payment_routes_to_correct_path() {
 async fn http_404_returns_api_error() {
     let mut server = mockito::Server::new_async().await;
     server
-        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize/payload").as_str())
+        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize/prepare").as_str())
         .with_status(404)
         .with_header("content-type", "application/json")
         .with_body(r#"{"code":"PaymentNotFound","message":"No payment exists."}"#)
@@ -101,7 +101,7 @@ async fn http_404_returns_api_error() {
 
     let err = make_client(&server.url())
         .payments
-        .authorize_payload(PAYMENT_ID)
+        .authorize_prepare(PAYMENT_ID)
         .await
         .unwrap_err();
 
@@ -119,7 +119,7 @@ async fn http_404_returns_api_error() {
 async fn http_422_returns_api_error_with_code() {
     let mut server = mockito::Server::new_async().await;
     server
-        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize/payload").as_str())
+        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize/prepare").as_str())
         .with_status(422)
         .with_header("content-type", "application/json")
         .with_body(r#"{"code":"AuthorizationExpired","message":"The authorizationExpiry has passed."}"#)
@@ -128,7 +128,7 @@ async fn http_422_returns_api_error_with_code() {
 
     let err = make_client(&server.url())
         .payments
-        .authorize_payload(PAYMENT_ID)
+        .authorize_prepare(PAYMENT_ID)
         .await
         .unwrap_err();
 
@@ -145,7 +145,7 @@ async fn http_422_returns_api_error_with_code() {
 #[tokio::test]
 async fn retry_option_is_accepted() {
     let mut server = mockito::Server::new_async().await;
-    let path = format!("/payments/{PAYMENT_ID}/authorize/payload");
+    let path = format!("/payments/{PAYMENT_ID}/authorize/prepare");
 
     // Two failures then a success — tests that retry config is wired up.
     server
@@ -172,14 +172,14 @@ async fn retry_option_is_accepted() {
         retry_delay: Duration::from_millis(1),
         ..Default::default()
     });
-    let _ = client.payments.authorize_payload(PAYMENT_ID).await;
+    let _ = client.payments.authorize_prepare(PAYMENT_ID).await;
 }
 
 #[tokio::test]
 async fn no_retry_on_http_errors() {
     let mut server = mockito::Server::new_async().await;
     let mock = server
-        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize/payload").as_str())
+        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize/prepare").as_str())
         .with_status(422)
         .with_header("content-type", "application/json")
         .with_body(r#"{"code":"AuthorizationExpired","message":"expired"}"#)
@@ -193,7 +193,7 @@ async fn no_retry_on_http_errors() {
         retry_delay: Duration::from_millis(1),
         ..Default::default()
     });
-    let _ = client.payments.authorize_payload(PAYMENT_ID).await;
+    let _ = client.payments.authorize_prepare(PAYMENT_ID).await;
     mock.assert_async().await;
 }
 
@@ -205,7 +205,7 @@ async fn no_retry_on_http_errors() {
 async fn logger_receives_entry_on_success() {
     let mut server = mockito::Server::new_async().await;
     server
-        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize/payload").as_str())
+        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize/prepare").as_str())
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(authorize_body())
@@ -222,7 +222,7 @@ async fn logger_receives_entry_on_success() {
         })),
         ..Default::default()
     });
-    client.payments.authorize_payload(PAYMENT_ID).await.unwrap();
+    client.payments.authorize_prepare(PAYMENT_ID).await.unwrap();
 
     let log = entries.lock().unwrap();
     assert_eq!(log.len(), 1);
@@ -235,7 +235,7 @@ async fn logger_receives_entry_on_success() {
 async fn logger_receives_error_entry_on_http_error() {
     let mut server = mockito::Server::new_async().await;
     server
-        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize/payload").as_str())
+        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize/prepare").as_str())
         .with_status(404)
         .with_header("content-type", "application/json")
         .with_body(r#"{"code":"PaymentNotFound","message":"not found"}"#)
@@ -252,7 +252,7 @@ async fn logger_receives_error_entry_on_http_error() {
         })),
         ..Default::default()
     });
-    let _ = client.payments.authorize_payload(PAYMENT_ID).await;
+    let _ = client.payments.authorize_prepare(PAYMENT_ID).await;
 
     let log = entries.lock().unwrap();
     assert_eq!(log[0].status, Some(404));
@@ -263,7 +263,7 @@ async fn logger_receives_error_entry_on_http_error() {
 async fn debug_logger_does_not_panic() {
     let mut server = mockito::Server::new_async().await;
     server
-        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize/payload").as_str())
+        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize/prepare").as_str())
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(authorize_body())
@@ -275,5 +275,5 @@ async fn debug_logger_does_not_panic() {
         logger: Some(rail0::debug_logger()),
         ..Default::default()
     });
-    client.payments.authorize_payload(PAYMENT_ID).await.unwrap();
+    client.payments.authorize_prepare(PAYMENT_ID).await.unwrap();
 }
