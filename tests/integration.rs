@@ -21,8 +21,8 @@ fn create_payment_body() -> String {
     let domain = r#"{"name":"","version":"","chainId":0,"verifyingContract":"0x0"}"#;
     let types = r#"{"TransferWithAuthorization":[]}"#;
     let message = format!(r#"{{"from":"0x0","to":"0x0","value":"0","validAfter":"0","validBefore":"0","nonce":"0x{nonce}"}}"#);
-    let signing_payload = format!(r#"{{"domain":{domain},"types":{types},"primaryType":"TransferWithAuthorization","message":{message}}}"#);
-    format!(r#"{{"paymentId":"{PAYMENT_ID}","configHash":"0x{config_hash}","payment":{payment},"amount":"50000000","chainId":8453,"rail0Contract":"0x0","signingPayload":{signing_payload}}}"#)
+    let signing_prepare = format!(r#"{{"domain":{domain},"types":{types},"primaryType":"TransferWithAuthorization","message":{message}}}"#);
+    format!(r#"{{"paymentId":"{PAYMENT_ID}","configHash":"0x{config_hash}","payment":{payment},"amount":"50000000","chainId":8453,"rail0Contract":"0x0","signingPayload":{signing_prepare}}}"#)
 }
 
 fn authorize_body() -> String {
@@ -108,7 +108,7 @@ async fn create_payment_returns_response() {
         .unwrap();
     assert_eq!(res.payment_id, PAYMENT_ID);
     assert!(res.config_hash.starts_with("0x"));
-    assert!(!res.signing_payload.primary_type.is_empty());
+    assert!(!res.signing_prepare.primary_type.is_empty());
 }
 
 #[tokio::test]
@@ -144,10 +144,10 @@ async fn sign_stores_signature() {
 // ── authorize ────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn authorize_payload_returns_unsigned_tx() {
+async fn authorize_prepare_returns_unsigned_tx() {
     let mut server = mockito::Server::new_async().await;
     server
-        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize/payload").as_str())
+        .mock("POST", format!("/payments/{PAYMENT_ID}/authorize/prepare").as_str())
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(prepare_body())
@@ -156,7 +156,7 @@ async fn authorize_payload_returns_unsigned_tx() {
 
     let res = client(&server.url())
         .payments
-        .authorize_payload(PAYMENT_ID)
+        .authorize_prepare(PAYMENT_ID)
         .await
         .unwrap();
     assert!(!res.unsigned_transaction.is_empty());
@@ -191,10 +191,10 @@ async fn authorize_returns_capturable_amount() {
 // ── charge ───────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn charge_payload_returns_unsigned_tx() {
+async fn charge_prepare_returns_unsigned_tx() {
     let mut server = mockito::Server::new_async().await;
     server
-        .mock("POST", format!("/payments/{PAYMENT_ID}/charge/payload").as_str())
+        .mock("POST", format!("/payments/{PAYMENT_ID}/charge/prepare").as_str())
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(prepare_body())
@@ -203,7 +203,7 @@ async fn charge_payload_returns_unsigned_tx() {
 
     let res = client(&server.url())
         .payments
-        .charge_payload(PAYMENT_ID)
+        .charge_prepare(PAYMENT_ID)
         .await
         .unwrap();
     assert!(!res.unsigned_transaction.is_empty());
@@ -238,10 +238,10 @@ async fn charge_returns_charged_amount() {
 // ── capture ──────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn capture_payload_returns_unsigned_tx() {
+async fn capture_prepare_returns_unsigned_tx() {
     let mut server = mockito::Server::new_async().await;
     server
-        .mock("POST", format!("/payments/{PAYMENT_ID}/capture/payload").as_str())
+        .mock("POST", format!("/payments/{PAYMENT_ID}/capture/prepare").as_str())
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(prepare_body())
@@ -251,7 +251,7 @@ async fn capture_payload_returns_unsigned_tx() {
     use rail0::CapturePaymentRequest;
     let res = client(&server.url())
         .payments
-        .capture_payload(PAYMENT_ID, &CapturePaymentRequest { amount: "50000000".into() })
+        .capture_prepare(PAYMENT_ID, &CapturePaymentRequest { amount: "50000000".into() })
         .await
         .unwrap();
     assert!(!res.unsigned_transaction.is_empty());
@@ -285,10 +285,10 @@ async fn capture_returns_captured_amount() {
 // ── void ─────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn void_payload_returns_unsigned_tx() {
+async fn void_prepare_returns_unsigned_tx() {
     let mut server = mockito::Server::new_async().await;
     server
-        .mock("POST", format!("/payments/{PAYMENT_ID}/void/payload").as_str())
+        .mock("POST", format!("/payments/{PAYMENT_ID}/void/prepare").as_str())
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(prepare_body())
@@ -297,7 +297,7 @@ async fn void_payload_returns_unsigned_tx() {
 
     let res = client(&server.url())
         .payments
-        .void_payload(PAYMENT_ID)
+        .void_prepare(PAYMENT_ID)
         .await
         .unwrap();
     assert!(!res.unsigned_transaction.is_empty());
@@ -330,10 +330,10 @@ async fn void_returns_released_amount() {
 // ── release ──────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn release_payload_returns_unsigned_tx() {
+async fn release_prepare_returns_unsigned_tx() {
     let mut server = mockito::Server::new_async().await;
     server
-        .mock("POST", format!("/payments/{PAYMENT_ID}/release/payload").as_str())
+        .mock("POST", format!("/payments/{PAYMENT_ID}/release/prepare").as_str())
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(prepare_body())
@@ -343,7 +343,7 @@ async fn release_payload_returns_unsigned_tx() {
     use rail0::ReleaseRequest;
     let res = client(&server.url())
         .payments
-        .release_payload(PAYMENT_ID, &ReleaseRequest::default())
+        .release_prepare(PAYMENT_ID, &ReleaseRequest::default())
         .await
         .unwrap();
     assert!(!res.unsigned_transaction.is_empty());
@@ -377,10 +377,10 @@ async fn release_returns_released_amount() {
 // ── refund ───────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn refund_payload_returns_unsigned_tx() {
+async fn refund_prepare_returns_unsigned_tx() {
     let mut server = mockito::Server::new_async().await;
     server
-        .mock("POST", format!("/payments/{PAYMENT_ID}/refund/payload").as_str())
+        .mock("POST", format!("/payments/{PAYMENT_ID}/refund/prepare").as_str())
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(prepare_body())
@@ -390,7 +390,7 @@ async fn refund_payload_returns_unsigned_tx() {
     use rail0::RefundPayloadRequest;
     let res = client(&server.url())
         .payments
-        .refund_payload(PAYMENT_ID, &RefundPayloadRequest { amount: "10000000".into(), v: None, r: None, s: None })
+        .refund_prepare(PAYMENT_ID, &RefundPayloadRequest { amount: "10000000".into(), v: None, r: None, s: None })
         .await
         .unwrap();
     assert!(!res.unsigned_transaction.is_empty());

@@ -46,7 +46,7 @@ fn make_client(server_url: &str) -> Rail0Client {
 async fn get_nonce_routes_to_correct_path() {
     let mut server = mockito::Server::new_async().await;
     let mock = server
-        .mock("GET", "/auth/nonce")
+        .mock("POST", "/nonces")
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(r#"{"nonce":"test-nonce","expires_at":"2099-01-01T00:00:00Z"}"#)
@@ -89,9 +89,9 @@ async fn verify_posts_to_auth() {
 async fn login_performs_full_siwe_flow() {
     let mut server = mockito::Server::new_async().await;
 
-    // Step 1: GET /auth/nonce
+    // Step 1: POST /nonces
     let nonce_mock = server
-        .mock("GET", "/auth/nonce")
+        .mock("POST", "/nonces")
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(r#"{"nonce":"flow-nonce","expires_at":"2099-01-01T00:00:00Z"}"#)

@@ -1,9 +1,9 @@
 // Standard two-step payment flow: authorize → capture
 //
 // The payer creates a payment intent, signs the EIP-712 payload, and
-// submits the signature. The payee then calls authorize_payload (get the
+// submits the signature. The payee then calls authorize_prepare (get the
 // unsigned tx), signs it offline, and submits with authorize. Then
-// capture_payload + capture to move funds from escrow to payee.
+// capture_prepare + capture to move funds from escrow to payee.
 //
 // On-chain flow:
 //
@@ -64,20 +64,20 @@ async fn main() {
     println!("Payment ID: {}", create_resp.payment_id);
     println!("Config hash: {}", create_resp.config_hash);
 
-    // The payer signs create_resp.signing_payload using eth_signTypedData_v4 or sign_authorize:
+    // The payer signs create_resp.signing_prepare using eth_signTypedData_v4 or sign_authorize:
     //
     //   let key = rail0::hex_to_private_key("0xYourPrivateKey").unwrap();
     //   let sig = rail0::sign_authorize(&rail0::SignPaymentParams {
     //       private_key: key,
     //       payment: payment.clone(),
     //       amount: 50_000_000,
-    //       nonce: create_resp.signing_payload.message.nonce.clone(),
+    //       nonce: create_resp.signing_prepare.message.nonce.clone(),
     //       contract_address: create_resp.rail0_contract.clone(),
     //       token_domain: rail0::TokenDomain {
-    //           name: create_resp.signing_payload.domain.name.clone(),
-    //           version: create_resp.signing_payload.domain.version.clone(),
-    //           chain_id: create_resp.signing_payload.domain.chain_id as u64,
-    //           verifying_contract: create_resp.signing_payload.domain.verifying_contract.clone(),
+    //           name: create_resp.signing_prepare.domain.name.clone(),
+    //           version: create_resp.signing_prepare.domain.version.clone(),
+    //           chain_id: create_resp.signing_prepare.domain.chain_id as u64,
+    //           verifying_contract: create_resp.signing_prepare.domain.verifying_contract.clone(),
     //       },
     //       valid_after: None,
     //       valid_before: None,
@@ -105,9 +105,9 @@ async fn main() {
 
     let prep_authorize = client
         .payments
-        .authorize_payload(&create_resp.payment_id)
+        .authorize_prepare(&create_resp.payment_id)
         .await
-        .unwrap_or_else(|e| panic!("authorize_payload: {e}"));
+        .unwrap_or_else(|e| panic!("authorize_prepare: {e}"));
 
     println!(
         "Unsigned authorize tx (chain {}): {}",
@@ -139,12 +139,12 @@ async fn main() {
 
     let prep_capture = client
         .payments
-        .capture_payload(
+        .capture_prepare(
             &create_resp.payment_id,
             &CapturePaymentRequest { amount: "50000000".into() },
         )
         .await
-        .unwrap_or_else(|e| panic!("capture_payload: {e}"));
+        .unwrap_or_else(|e| panic!("capture_prepare: {e}"));
 
     // Payee signs prep_capture.unsigned_transaction offline, then submits:
     //   let signed_tx = payee_wallet.sign_transaction(&prep_capture.unsigned_transaction);
@@ -169,7 +169,7 @@ async fn main() {
     // Step 4b — Alternatively: payee voids (order cancelled)
     // ----------------------------------------------------------------
 
-    // let prep_void = client.payments.void_payload(&create_resp.payment_id).await?;
+    // let prep_void = client.payments.void_prepare(&create_resp.payment_id).await?;
     // let signed_void = payee_wallet.sign_transaction(&prep_void.unsigned_transaction);
     // client.payments.void(&create_resp.payment_id,
     //     &SubmitTransactionRequest { signed_transaction: signed_void }).await?;
@@ -178,7 +178,7 @@ async fn main() {
     // Step 4c — Release (fallback after authorization_expiry, permissionless)
     // ----------------------------------------------------------------
 
-    // let prep_release = client.payments.release_payload(&create_resp.payment_id,
+    // let prep_release = client.payments.release_prepare(&create_resp.payment_id,
     //     &rail0::ReleaseRequest::default()).await?;
     // let signed_release = payer_wallet.sign_transaction(&prep_release.unsigned_transaction);
     // client.payments.release(&create_resp.payment_id,
