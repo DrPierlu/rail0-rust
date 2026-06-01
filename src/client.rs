@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::accounts::AccountsClient;
+use crate::auth::AuthClient;
 use crate::chains::ChainsClient;
 use crate::tokens::TokensClient;
 use crate::http::{ClientOptions, HttpClient};
@@ -17,6 +18,8 @@ use crate::payments::PaymentsClient;
 /// });
 /// ```
 pub struct Rail0Client {
+    /// SIWE authentication operations: `get_nonce`, `verify`, `login`.
+    pub auth: AuthClient,
     /// Account configuration operations: `payment_methods`.
     pub accounts: AccountsClient,
     /// Blockchain and token catalog operations: `blockchains`, `tokens`.
@@ -34,6 +37,7 @@ impl Rail0Client {
     pub fn new(opts: ClientOptions) -> Self {
         let http = Arc::new(HttpClient::new(opts));
         Self {
+            auth: AuthClient::new(Arc::clone(&http)),
             accounts: AccountsClient::new(Arc::clone(&http)),
             chains: ChainsClient::new(Arc::clone(&http)),
             tokens: TokensClient::new(Arc::clone(&http)),

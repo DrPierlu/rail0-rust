@@ -1,4 +1,5 @@
 pub mod accounts;
+pub mod auth;
 pub mod chains;
 pub mod tokens;
 pub mod client;
@@ -14,6 +15,7 @@ pub mod types;
 // ================================================================
 
 pub use accounts::AccountsClient;
+pub use auth::{personal_sign, private_key_to_address, AuthClient, AuthResponse, NonceResponse};
 pub use chains::{Blockchain, ChainsClient};
 pub use tokens::{Token, TokensClient};
 pub use client::Rail0Client;
