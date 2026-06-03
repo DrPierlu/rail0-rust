@@ -5,6 +5,21 @@
 
 use serde::{Deserialize, Serialize};
 
+/// A RAIL0 merchant account.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Account {
+    pub active: bool,
+    pub created_at: String,
+    pub email: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fee_bps: Option<u32>,
+    pub id: String,
+    pub name: String,
+    pub slug: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+}
+
 /// Amount to capture from escrow. May be less than `capturable_amount` for a partial capture.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CapturePaymentRequest {
@@ -32,6 +47,12 @@ pub struct CreatePaymentRequest {
     /// EVM chain ID of the target network.
     pub chain_id: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Optional human-readable payment label visible to the payer (e.g. "Order #123 — Acme Store").
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Arbitrary key-value data for custom reconciliation. Set at creation and immutable. Max 4 KB.
+    pub metadata: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     /// `authorize` — funds held in escrow, captured later. `charge` — one-shot: funds immediately distributed. The two modes use different EIP-3009 nonce prefixes; a signature for one cannot be reused for the other.
     pub mode: Option<String>,
     pub payment: String,
@@ -42,6 +63,12 @@ pub struct CreatePaymentResponse {
     pub chain_id: u32,
     /// EIP-712 hash of the Payment struct. Commits the signature to the exact payment terms.
     pub config_hash: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Optional human-readable payment label.
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Arbitrary key-value data attached at creation for custom reconciliation.
+    pub metadata: Option<serde_json::Value>,
     pub payment: String,
     /// Address of the RAIL0 contract on the target chain.
     pub rail0_contract: String,
@@ -94,6 +121,9 @@ pub struct GetPaymentResponse {
     pub authorization_expiry: i64,
     pub chain_id: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Optional human-readable payment label.
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     /// Machine-readable failure reason. Present only when status=failed.
     pub failure_code: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -102,6 +132,9 @@ pub struct GetPaymentResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Hash of the most recently broadcast transaction.
     pub last_broadcast_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Arbitrary key-value data attached at creation for custom reconciliation.
+    pub metadata: Option<serde_json::Value>,
     pub mode: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Live on-chain amounts. Present when status is authorized, captured, voided, released, charged, or refunded.
