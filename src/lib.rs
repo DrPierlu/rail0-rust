@@ -9,6 +9,7 @@ pub mod payments;
 pub mod signing;
 pub mod stablecoins;
 pub mod types;
+pub mod types_gen;
 
 // ================================================================
 //  Flat public re-exports
