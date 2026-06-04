@@ -81,12 +81,20 @@ pub struct SigningPayload {
 //  Request bodies
 // ================================================================
 
-/// Request body for [`payments.create_payment`](crate::PaymentsClient::create_payment).
+/// `payment` field sent in [`CreatePaymentRequest`].
+#[derive(Debug, Clone, Serialize)]
+pub struct CreatePaymentInput {
+    pub payer: Address,
+    pub payee: Address,
+    pub token: Address,
+    pub amount: Uint256String,
+}
+
+/// Request body for [`payments.create`](crate::PaymentsClient::create).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreatePaymentRequest {
-    pub payment: PaymentConfig,
-    pub amount: Uint256String,
+    pub payment: CreatePaymentInput,
     pub chain_id: i64,
     /// `"authorize"` or `"charge"`.
     pub mode: String,
@@ -131,6 +139,19 @@ pub struct RefundPayloadRequest {
 // ================================================================
 //  Response shapes
 // ================================================================
+
+/// Returned by [`PaymentsClient::refund_prepare`].
+///
+/// Phase 1 (no v/r/s): `signing_payload` is set, `unsigned_transaction` is None.
+/// Phase 2 (with v/r/s): `unsigned_transaction` is set, `signing_payload` is None.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefundPrepareResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signing_payload: Option<SigningPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unsigned_transaction: Option<String>,
+}
 
 /// Returned by [`payments.create_payment`](crate::PaymentsClient::create_payment).
 #[derive(Debug, Clone, Deserialize)]

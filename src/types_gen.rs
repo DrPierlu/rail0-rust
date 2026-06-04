@@ -338,6 +338,12 @@ pub struct PaymentSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,
     pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub on_chain: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_message: Option<String>,
 }
 
 /// A single on-chain transaction associated with a payment.

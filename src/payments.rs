@@ -8,7 +8,7 @@ use crate::http::HttpClient;
 use crate::types::{
     CapturePaymentRequest, CreatePaymentRequest, CreatePaymentResponse,
     PayerSignatureRequest, PayerSignatureResponse, PrepareTransactionResponse,
-    RefundPayloadRequest, ReleaseRequest, SubmitTransactionRequest,
+    RefundPayloadRequest, RefundPrepareResponse, ReleaseRequest, SubmitTransactionRequest,
 };
 use crate::types_gen::{
     ListPaymentsParams, ListTransactionsParams, PaginatedPayments, PaginatedTransactions,
@@ -236,7 +236,7 @@ impl PaymentsClient {
         &self,
         payment_id: &str,
         params: &RefundPayloadRequest,
-    ) -> Result<PrepareTransactionResponse, Rail0Error> {
+    ) -> Result<RefundPrepareResponse, Rail0Error> {
         self.http
             .post(&format!("/payments/{payment_id}/refund/prepare"), params)
             .await

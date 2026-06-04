@@ -32,9 +32,10 @@ pub use stablecoins::{
 };
 pub use types::{
     Address, ApiError, AuthorizePaymentResponse, Bytes32, CapturePaymentRequest,
-    CapturePaymentResponse, ChargePaymentResponse, CreatePaymentRequest, CreatePaymentResponse,
-    EIP3009Message, EIP712Domain, EIP712TypeEntry, EIP712Types, OnChainState,
+    CapturePaymentResponse, ChargePaymentResponse, CreatePaymentInput, CreatePaymentRequest,
+    CreatePaymentResponse, EIP3009Message, EIP712Domain, EIP712TypeEntry, EIP712Types, OnChainState,
     PayerSignatureRequest, PayerSignatureResponse, PaymentConfig, PaymentMethod, PaymentResponse,
     PrepareTransactionResponse, RefundPayloadRequest, RefundPaymentResponse, ReleasePaymentResponse,
-    ReleaseRequest, SigningPayload, SubmitTransactionRequest, Uint256String, VoidPaymentResponse,
+    RefundPrepareResponse, ReleaseRequest, SigningPayload, SubmitTransactionRequest,
+    Uint256String, VoidPaymentResponse,
 };
