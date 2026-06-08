@@ -24,8 +24,6 @@ pub struct PaymentConfig {
     pub max_amount: Uint256String,
     pub authorization_expiry: i64,
     pub refund_expiry: i64,
-    pub fee_bps: u32,
-    pub fee_receiver: Address,
 }
 
 /// EIP-712 domain for the token contract.
