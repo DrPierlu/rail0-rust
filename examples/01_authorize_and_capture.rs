@@ -129,8 +129,8 @@ async fn main() {
         .unwrap_or_else(|e| panic!("authorize: {e}"));
 
     println!(
-        "Authorized: tx={} capturable={}",
-        auth_resp.transaction_hash, auth_resp.capturable_amount
+        "Authorized: id={} status={}",
+        auth_resp.rail0_id, auth_resp.status
     );
 
     // ----------------------------------------------------------------
@@ -160,8 +160,8 @@ async fn main() {
         .unwrap_or_else(|e| panic!("capture: {e}"));
 
     println!(
-        "Captured: tx={} captured={}",
-        capture_resp.transaction_hash, capture_resp.captured_amount
+        "Captured: id={} status={}",
+        capture_resp.rail0_id, capture_resp.status
     );
     let _ = prep_capture;
 

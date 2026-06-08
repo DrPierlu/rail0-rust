@@ -128,7 +128,7 @@ async fn main() {
         });
 
     println!(
-        "Charged: tx={} charged={} fee={}",
-        tx.transaction_hash, tx.charged_amount, tx.fee_amount
+        "Charged: id={} status={}",
+        tx.rail0_id, tx.status
     );
 }

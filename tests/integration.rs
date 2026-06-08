@@ -26,17 +26,11 @@ fn create_payment_body() -> String {
 }
 
 fn authorize_body() -> String {
-    format!(
-        r#"{{"paymentId":"{PAYMENT_ID}","transactionHash":"0x{}","capturableAmount":"50000000","authorizationExpiry":9999999999}}"#,
-        "ab".repeat(32)
-    )
+    format!(r#"{{"rail0_id":"{PAYMENT_ID}","status":"submitting"}}"#)
 }
 
 fn charge_body() -> String {
-    format!(
-        r#"{{"paymentId":"{PAYMENT_ID}","transactionHash":"0x{}","chargedAmount":"25000000","feeAmount":"0","refundableAmount":"25000000"}}"#,
-        "ab".repeat(32)
-    )
+    format!(r#"{{"rail0_id":"{PAYMENT_ID}","status":"submitting"}}"#)
 }
 
 fn prepare_body() -> String {
@@ -44,31 +38,19 @@ fn prepare_body() -> String {
 }
 
 fn capture_submit_body() -> String {
-    format!(
-        r#"{{"paymentId":"{PAYMENT_ID}","transactionHash":"0x{}","capturedAmount":"50000000","capturableAmount":"0","refundableAmount":"50000000"}}"#,
-        "ab".repeat(32)
-    )
+    format!(r#"{{"rail0_id":"{PAYMENT_ID}","status":"submitting"}}"#)
 }
 
 fn void_submit_body() -> String {
-    format!(
-        r#"{{"paymentId":"{PAYMENT_ID}","transactionHash":"0x{}","releasedAmount":"50000000"}}"#,
-        "ab".repeat(32)
-    )
+    format!(r#"{{"rail0_id":"{PAYMENT_ID}","status":"submitting"}}"#)
 }
 
 fn release_body() -> String {
-    format!(
-        r#"{{"paymentId":"{PAYMENT_ID}","transactionHash":"0x{}","releasedAmount":"50000000"}}"#,
-        "ab".repeat(32)
-    )
+    format!(r#"{{"rail0_id":"{PAYMENT_ID}","status":"submitting"}}"#)
 }
 
 fn refund_submit_body() -> String {
-    format!(
-        r#"{{"paymentId":"{PAYMENT_ID}","transactionHash":"0x{}","refundedAmount":"10000000","refundableAmount":"40000000"}}"#,
-        "ab".repeat(32)
-    )
+    format!(r#"{{"rail0_id":"{PAYMENT_ID}","status":"submitting"}}"#)
 }
 
 // ================================================================
@@ -108,7 +90,7 @@ async fn create_payment_returns_response() {
         .unwrap();
     assert_eq!(res.payment_id, PAYMENT_ID);
     assert!(res.config_hash.starts_with("0x"));
-    assert!(!res.signing_prepare.primary_type.is_empty());
+    assert!(!res.signing_payload.primary_type.is_empty());
 }
 
 #[tokio::test]
@@ -183,9 +165,8 @@ async fn authorize_returns_capturable_amount() {
         )
         .await
         .unwrap();
-    assert_eq!(res.payment_id, PAYMENT_ID);
-    assert!(res.transaction_hash.starts_with("0x"));
-    assert_eq!(res.capturable_amount, "50000000");
+    assert_eq!(res.rail0_id, PAYMENT_ID);
+    assert_eq!(res.status, "submitting");
 }
 
 // ── charge ───────────────────────────────────────────────────────────────────
@@ -230,9 +211,8 @@ async fn charge_returns_charged_amount() {
         )
         .await
         .unwrap();
-    assert_eq!(res.payment_id, PAYMENT_ID);
-    assert!(res.transaction_hash.starts_with("0x"));
-    assert!(!res.charged_amount.is_empty());
+    assert_eq!(res.rail0_id, PAYMENT_ID);
+    assert_eq!(res.status, "submitting");
 }
 
 // ── capture ──────────────────────────────────────────────────────────────────
@@ -278,8 +258,8 @@ async fn capture_returns_captured_amount() {
         )
         .await
         .unwrap();
-    assert!(res.transaction_hash.starts_with("0x"));
-    assert_eq!(res.captured_amount, "50000000");
+    assert_eq!(res.rail0_id, PAYMENT_ID);
+    assert_eq!(res.status, "submitting");
 }
 
 // ── void ─────────────────────────────────────────────────────────────────────
@@ -323,8 +303,8 @@ async fn void_returns_released_amount() {
         )
         .await
         .unwrap();
-    assert!(res.transaction_hash.starts_with("0x"));
-    assert!(!res.released_amount.is_empty());
+    assert_eq!(res.rail0_id, PAYMENT_ID);
+    assert_eq!(res.status, "submitting");
 }
 
 // ── release ──────────────────────────────────────────────────────────────────
@@ -369,9 +349,8 @@ async fn release_returns_released_amount() {
         )
         .await
         .unwrap();
-    assert_eq!(res.payment_id, PAYMENT_ID);
-    assert!(res.transaction_hash.starts_with("0x"));
-    assert!(!res.released_amount.is_empty());
+    assert_eq!(res.rail0_id, PAYMENT_ID);
+    assert_eq!(res.status, "submitting");
 }
 
 // ── refund ───────────────────────────────────────────────────────────────────
@@ -393,7 +372,7 @@ async fn refund_prepare_returns_unsigned_tx() {
         .refund_prepare(PAYMENT_ID, &RefundPayloadRequest { amount: "10000000".into(), v: None, r: None, s: None })
         .await
         .unwrap();
-    assert!(!res.unsigned_transaction.is_empty());
+    assert!(res.unsigned_transaction.is_some());
 }
 
 #[tokio::test]
@@ -416,7 +395,6 @@ async fn refund_returns_refunded_amount() {
         )
         .await
         .unwrap();
-    assert!(res.transaction_hash.starts_with("0x"));
-    assert_eq!(res.refunded_amount, "10000000");
-    assert_eq!(res.refundable_amount, "40000000");
+    assert_eq!(res.rail0_id, PAYMENT_ID);
+    assert_eq!(res.status, "submitting");
 }

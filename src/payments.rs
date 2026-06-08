@@ -57,8 +57,8 @@ impl PaymentsClient {
         self.http.get(&path).await
     }
 
-    /// Create a payment intent. Returns the EIP-712 signing_prepare for the payer to sign.
-    pub async fn create(
+    /// Create a payment intent. Returns the EIP-712 signing_payload for the payer to sign.
+    pub async fn create_payment(
         &self,
         params: &CreatePaymentRequest,
     ) -> Result<CreatePaymentResponse, Rail0Error> {
@@ -191,8 +191,7 @@ impl PaymentsClient {
     }
 
     /// Broadcast a signed void transaction (HTTP 202, async). Called by the payee.
-    /// Note: method named `void_payment` because `void` is a reserved word in Rust.
-    pub async fn void_payment(
+    pub async fn void(
         &self,
         payment_id: &str,
         params: &SubmitTransactionRequest,

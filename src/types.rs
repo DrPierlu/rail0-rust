@@ -81,20 +81,12 @@ pub struct SigningPayload {
 //  Request bodies
 // ================================================================
 
-/// `payment` field sent in [`CreatePaymentRequest`].
-#[derive(Debug, Clone, Serialize)]
-pub struct CreatePaymentInput {
-    pub payer: Address,
-    pub payee: Address,
-    pub token: Address,
-    pub amount: Uint256String,
-}
-
-/// Request body for [`payments.create`](crate::PaymentsClient::create).
+/// Request body for [`payments.create_payment`](crate::PaymentsClient::create_payment).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreatePaymentRequest {
-    pub payment: CreatePaymentInput,
+    pub payment: PaymentConfig,
+    pub amount: Uint256String,
     pub chain_id: i64,
     /// `"authorize"` or `"charge"`.
     pub mode: String,
@@ -163,7 +155,7 @@ pub struct CreatePaymentResponse {
     pub amount: Uint256String,
     pub chain_id: i64,
     pub rail0_contract: Address,
-    pub signing_prepare: SigningPayload,
+    pub signing_payload: SigningPayload,
 }
 
 /// Returned by [`payments.sign`](crate::PaymentsClient::sign).

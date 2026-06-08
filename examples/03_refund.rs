@@ -51,7 +51,7 @@ async fn main() {
         .unwrap_or_else(|e| panic!("refund_prepare phase 1: {e}"));
 
     println!("Phase 1 — sign this payload off-chain:");
-    println!("  unsigned_transaction: {}", phase1.unsigned_transaction);
+    println!("  unsigned_transaction: {}", phase1.unsigned_transaction.as_deref().unwrap_or(""));
 
     // Payee signs the EIP-3009 payload off-chain to obtain v, r, s:
     //
@@ -110,10 +110,9 @@ async fn main() {
         });
 
     println!(
-        "Refunded: tx={} refunded={} remaining={}",
-        refund_resp.transaction_hash,
-        refund_resp.refunded_amount,
-        refund_resp.refundable_amount
+        "Refunded: id={} status={}",
+        refund_resp.rail0_id,
+        refund_resp.status
     );
     let _ = phase2;
 }
