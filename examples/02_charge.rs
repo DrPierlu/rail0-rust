@@ -13,10 +13,8 @@
 //
 //   cargo run --example 02_charge
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use rail0::{
-    ClientOptions, CreatePaymentRequest, PayerSignatureRequest, PaymentConfig, Rail0Client,
+    ClientOptions, CreatePaymentRequest, PayerSignatureRequest, Rail0Client,
     Rail0Error, SubmitTransactionRequest,
 };
 
@@ -27,22 +25,6 @@ async fn main() {
         ..Default::default()
     });
 
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
-
-    let payment = PaymentConfig {
-        payer: "0xBuyerAddress000000000000000000000000000000".into(),
-        payee: "0xMerchantAddress0000000000000000000000000000".into(),
-        token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913".into(), // USDC on Base
-        max_amount: "25000000".into(),
-        authorization_expiry: now + 60 * 5, // short window — charge captures immediately
-        refund_expiry: now + 60 * 60 * 24 * 30, // 30-day refund window
-        fee_bps: 0,
-        fee_receiver: "0x0000000000000000000000000000000000000000".into(),
-    };
-
     // ----------------------------------------------------------------
     // Step 1 — Payer creates a payment intent (mode = "charge")
     // ----------------------------------------------------------------
@@ -50,10 +32,14 @@ async fn main() {
     let create_resp = client
         .payments
         .create_payment(&CreatePaymentRequest {
-            payment: payment.clone(),
-            amount: "25000000".into(),
-            chain_id: 8453,
+            chain_id: 8453, // Base
             mode: "charge".into(),
+            amount: "25000000".into(),   // 25 USDC (6 decimals)
+            token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913".into(), // USDC on Base
+            payer: "0xBuyerAddress000000000000000000000000000000".into(),
+            payee: "0xMerchantAddress0000000000000000000000000000".into(),
+            description: None,
+            metadata: None,
         })
         .await
         .unwrap_or_else(|e| panic!("create_payment: {e}"));
@@ -65,7 +51,9 @@ async fn main() {
     //   let key = rail0::hex_to_private_key("0xYourPrivateKey").unwrap();
     //   let sig = rail0::sign_charge(&rail0::SignPaymentParams {
     //       private_key: key,
-    //       payment: payment.clone(),
+    //       payer: create_resp.payment.payer.clone(),
+    //       payee: create_resp.payment.payee.clone(),
+    //       token: create_resp.payment.token.clone(),
     //       amount: 25_000_000,
     //       nonce: create_resp.signing_prepare.message.nonce.clone(),
     //       contract_address: create_resp.rail0_contract.clone(),

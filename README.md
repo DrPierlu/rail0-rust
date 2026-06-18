@@ -36,15 +36,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 2 — create payment intent
     let resp = client.payments.create_payment(&CreatePaymentRequest {
-        payment: PaymentInput {
-            payer: "0xBuyer...".into(),
-            payee: usdc.wallet_address.clone(),
-            token: usdc.token_address.clone(),
-            amount: "50000000".into(), // 50 USDC (6 decimals)
-            ..Default::default()
-        },
         chain_id: usdc.chain_id as i64,
-        mode: "authorize".into(),
+        mode:     "authorize".into(),
+        amount:   "50000000".into(), // 50 USDC (6 decimals)
+        payer:    "0xBuyer...".into(),
+        payee:    usdc.wallet_address.clone(),
+        token:    usdc.token_address.clone(),
+        ..Default::default()
     }).await?;
 
     // Step 3 — payer signs the EIP-3009 payload off-chain

@@ -11,17 +11,17 @@ pub type Bytes32 = String;
 /// Avoids precision loss for amounts that exceed `u64::MAX`.
 pub type Uint256String = String;
 
-/// Immutable payment configuration committed on the first `authorize` or `charge` call.
+/// Immutable payment configuration returned by the API (e.g. in `CreatePaymentResponse`).
 ///
-/// Every subsequent operation on the same `payment_id` must supply the exact same struct —
-/// a mismatch causes the contract to revert with `PaymentMismatch`.
+/// Contains the full on-chain payment terms including server-applied policy fields
+/// (`authorization_expiry`, `refund_expiry`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PaymentConfig {
     pub payer: Address,
     pub payee: Address,
     pub token: Address,
-    pub max_amount: Uint256String,
+    pub amount: Uint256String,
     pub authorization_expiry: i64,
     pub refund_expiry: i64,
 }
@@ -80,14 +80,22 @@ pub struct SigningPayload {
 // ================================================================
 
 /// Request body for [`payments.create_payment`](crate::PaymentsClient::create_payment).
+///
+/// All fields are flat — there is no nested `payment` object.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreatePaymentRequest {
-    pub payment: PaymentConfig,
-    pub amount: Uint256String,
     pub chain_id: i64,
     /// `"authorize"` or `"charge"`.
     pub mode: String,
+    pub amount: Uint256String,
+    pub token: Address,
+    pub payer: Address,
+    pub payee: Address,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
 }
 
 /// Request body for [`payments.sign`](crate::PaymentsClient::sign).
